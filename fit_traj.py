@@ -334,13 +334,18 @@ def main():
     deviated = sit.trajectories.query("flight_id==@sit.deviated.flight_id").query("timestamp==@sit.deviated.stop")
     # plt.scatter(beacon.x,beacon.y,marker="*")
     plt.scatter(deviated.x, deviated.y)
-    t_pts = torch.tensor([fdeviated.tdeviation,fdeviated.tturn,fdeviated.trejoin],dtype=torch.float,names=(T,),device=device)
-    fdeviated.fxy[0].add_wpt_at_t(t_pts.rename(T))
-    raise Exception
-    print(fdeviated.fxy[0].wpts_at_t(t_pts))
+    t_pts = torch.tensor([fdeviated.tdeviation,fdeviated.tturn,fdeviated.trejoin],dtype=torch.float,names=(WPTS,),device=device)
+    #t_pts = torch.tensor([fdeviated.tturn,fdeviated.tturn,fdeviated.tturn],dtype=torch.float,names=(WPTS,),device=device)
+    fnew = fdeviated.fxy[0].add_wpt_at_t(t_pts)
+    plot(fnew,t,xory)
     # raise Exception
-    xy_pts = traj.generate(fdeviated.fxy[0],t_pts).cpu()
-    recplot(xy_pts,plt.scatter)
+    # print(fdeviated.fxy[0].wpts_at_t(t_pts))
+    # raise Exception
+    # t = torch.arange(fdeviated.fxy[0].duration.sum(),device=device).rename(T)
+    # xy_pts = traj.generate(fdeviated.fxy[0],t).cpu()
+    # # recplot(xy_pts,plt.scatter)
+    # xy_pts2 = traj.generate(fnew,t).cpu()
+    # recplot(xy_pts,plt.scatter)
     # print(xy_pts)
     # raise Exception
     # for beacon,trajp in lwpts:
