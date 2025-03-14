@@ -34,7 +34,7 @@ class Point(mixins.PointMixin):
     def __init__(self,name,latitude,longitude,proj=PROJ):
         self.longitude = longitude
         self.latitude = latitude
-        self.x,self.y = proj.transform([longitude],[latitude])
+        self.x,self.y = proj.transform(longitude,latitude)
         self.name = name
     def __repr__(self):
         return f"({self.longitude}, {self.latitude})"

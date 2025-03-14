@@ -16,14 +16,22 @@ KIM_PARAMETERS = {"angle_precision":0.5,"min_distance":200.}
 NM2METERS = 1852
 
 BATCH = "batch"
+DTYPE = torch.float32
+
 
 def unix2datetime(u):
     return datetime.datetime.fromtimestamp(u,datetime.UTC).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def check_is_named_tensor(t,dtype):
+    return isinstance(t,torch.Tensor) and t.dtype == dtype
 
 # modelisation de l'altitude ?????
 # axe supplémentaire pour gérer divers "trous temporels"
 class SituationOthers:
     def __init__(self,fid,fxy,fz,t):
+        assert check_is_named_tensor(fid,torch.int64)
+        assert check_is_named_tensor(t,DTYPE)
         self.fid = fid
         self.fxy = fxy
         self.fz = fz
@@ -32,6 +40,10 @@ class SituationOthers:
 class SituationDeviated(SituationOthers):
     def __init__(self,fid,fxy,fz,t,tdeviation,tturn,trejoin,beacon):#,wpt_start,wpt_turn,wpt_rejoin):
         super().__init__(fid,fxy,fz,t)
+        assert check_is_named_tensor(tdeviation,DTYPE)
+        assert check_is_named_tensor(tturn,DTYPE)
+        assert check_is_named_tensor(trejoin,DTYPE)
+        assert check_is_named_tensor(beacon,DTYPE)
         self.tdeviation = tdeviation
         self.tturn = tturn
         self.trejoin = trejoin
@@ -40,12 +52,13 @@ class SituationDeviated(SituationOthers):
 
 def quality_check(sit, sitflights):
     t_zero_situation = sit.trajectories.timestamp.min()
+    xy = traj.generate(sitflights.fxy,sitflights.t).cpu()
     for i,fid in enumerate(sitflights.fid):
-        df = sit.trajectories.query("flight_id==@sitflights.fid[@i]")
+        print(fid)
+        df = sit.trajectories.query("flight_id==@sitflights.fid[@i].item()")
         assert((sitflights.t[i].cpu() == df.timestamp.values-sit.trajectories.timestamp.min()).all())
         assert(sitflights.tdeviation==sit.deviated.start-t_zero_situation)
-        xy = traj.generate(sitflights.fxy[i],sitflights.t[i])
-        dxy = xy.cpu()-df[["x","y"]].values
+        dxy = xy[i]-df[["x","y"]].values
         dist = torch.hypot(dxy[...,0],dxy[...,1])
         print(dist.min(),dist.mean(),dist.max())
         # raise Exception
@@ -161,17 +174,28 @@ def convert_situation_to_flights(sit,initialize,device,thresh=100):
         for fid,dfin in df.groupby("flight_id"):
             lfid.append(fid)
             mask = douglas_peucker.douglas_peucker(dfin[["x","y"]].values,dfin.timestamp.values,thresh)
-            # mask = np.logical_or(mask, dfin.timestamp.values==t_deviation)
-            # mask = np.logical_or(mask, dfin.timestamp.values==t_turn)
-            # mask = np.logical_or(mask, dfin.timestamp.values==t_rejoin)
+            mask = np.logical_or(mask, dfin.timestamp.values==t_deviation)
+            mask = np.logical_or(mask, dfin.timestamp.values==t_turn)
+            mask = np.logical_or(mask, dfin.timestamp.values==t_rejoin)
             dfwpts = dfin.where(pd.Series(mask,index=dfin.index)).dropna(subset=["x"]).reset_index()
             f = initialize(dfwpts,device).shift_xy0(float(dfwpts.timestamp.values[0]))
             lfxy.append(f)
             lfz.append(f)
-            lt.append(torch.tensor(dfin.timestamp.values,device=device,names=(T,)))
+            lt.append(dfin.timestamp.values)
+            # lt.append(torch.tensor(dfin.timestamp.values,device=device,names=(T,)))
+        lfid = torch.tensor(lfid,device = device,dtype=torch.int64,names=(BATCH,))
+        lt = torch.tensor(lt,device=device,dtype=DTYPE,names=(BATCH,T))
+        # print(lt)
         return {"fid":lfid,"fxy":lfxy,"fz":lfz,"t":lt}
     ddeviated = convert(df.query("flight_id==@sit.deviated.flight_id"))
-    deviated = SituationDeviated(beacon=beacon_rejoin,tdeviation=t_deviation,tturn=t_turn,trejoin=t_rejoin,**ddeviated)
+    ddeviated["fxy"] = flights.cat_lflights(ddeviated["fxy"])
+    ddeviated["fz"] = flights.cat_lflights(ddeviated["fz"])
+    ddeviated["tdeviation"] = torch.tensor([t_deviation],device=device,dtype=DTYPE,names=(BATCH,))
+    ddeviated["tturn"] = torch.tensor([t_turn],device=device,dtype=DTYPE,names=(BATCH,))
+    # print(beacon_rejoin.x)
+    ddeviated["trejoin"] = torch.tensor([t_rejoin],device=device,dtype=DTYPE,names=(BATCH,))
+    ddeviated["beacon"] = torch.tensor([[beacon_rejoin.x,beacon_rejoin.y]],device=device,dtype=DTYPE,names=(BATCH,XY))
+    deviated = SituationDeviated(**ddeviated)
     return deviated
 # linear regression on "position=f(v)"
 # def fit_speed(trajreal,f,t_zero,device):#(trajreal,t):
@@ -245,7 +269,7 @@ def plot(f,t,xory):
 #     traj.generate(f,t)
 
 
-def test_uncertainty(sit,sitflights,device):
+def test_uncertainty(sit,fdeviated,device):
     # fname = "data/AA38909998_1657916586_1657917209.json"
     # #fname = "data/AA38932291_1657920628_1657920857.json"
     # #fname = "data/AA38944134_1658001122_1658001604.json"
@@ -255,17 +279,29 @@ def test_uncertainty(sit,sitflights,device):
     print(sit.trajectories.groupby("flight_id").count())
     dfin = sit.trajectories.query("flight_id==@selected_fid")#.loc[1:]
     xory=False
-    fmodel = sitflights.fxy[0]
     DANGLE = "dangle"
     MAN_WPTS = "man_wpts"
     DT = "dt1"
     DSPEED = "dspeed"
-    wpts_start = 3+torch.tensor([0],device=device,dtype=torch.int64).reshape(-1).rename(BATCH)#.reshape(-1).rename(BATCH)#,DANGLE)
-    wpts_turn = wpts_start+2
-    wpts_rejoin = wpts_turn+2
-    dangle = 1+torch.arange(1,device=device).reshape(-1).rename(DANGLE)
+    print(fdeviated.fxy.duration.names)
+    print(fdeviated.tdeviation)
+    fmodel = fdeviated.fxy
+    dtwpts = {}
+    for v in ["tdeviation","tturn","trejoin"]:
+        dtwpts[v] = getattr(fdeviated,v)
+        fmodel = fmodel.add_wpt_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
+        print(fmodel.duration.cumsum(axis=-1))
+    diwpts = {}
+    for v in ["tdeviation","tturn","trejoin"]:
+        diwpts[v]= fmodel.wpts_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
+    # wpts_start = 5+torch.tensor([0],device=device,dtype=torch.int64).reshape(-1).rename(BATCH)#.reshape(-1).rename(BATCH)#,DANGLE)
+    # wpts_turn = fmodel.wpts_at_t(fdeviated.tturn)
+    # wpts_rejoin = fmodel.wpts_at_t(fdeviated.trejoin)
+    for v in ["tdeviation","tturn","trejoin"]:
+        print(f"{v} {diwpts[v]=}")
+    dangle = 0.2+torch.arange(1,device=device).reshape(-1).rename(DANGLE)
     # dt = 300+20*torch.arange(1,device=device).reshape(-1).rename(DT)
-    dt = -20+torch.arange(1,device=device).reshape(-1).rename(DT)
+    dt = 50+torch.arange(1,device=device).reshape(-1).rename(DT)
     dspeed = 1.5+torch.arange(1,device=device).reshape(-1).rename(DSPEED)
     # dangle[0]=1#-0.3
     # print(dangle)
@@ -273,11 +309,14 @@ def test_uncertainty(sit,sitflights,device):
     # print(wpts_start,wpts_turn,wpts_rejoin)
     # raise Exception
     #fs = uncertainty.addangle(dangle,wpts_start,wpts_turn,wpts_rejoin,fmodel)
-    # fs = uncertainty.addangle(dangle,wpts_start,wpts_turn,wpts_rejoin,fmodel)
+    fs = uncertainty.addangle(dangle,diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fmodel)
+    modified_trejoin = uncertainty.gather_wpts(fs.duration.cumsum(axis=-1),diwpts["trejoin"]-1)
+    print(f"{fdeviated.trejoin=}")
+    print(f"{modified_trejoin=}")
     # fs = uncertainty.adddt_old(dt,wpts_start[0].item(),(wpts_start[0].item(),wpts_turn[0].item()),fmodel)
-    #fs = uncertainty.adddt_translate(dt,wpts_start,wpts_turn,fmodel)
+    # fs = uncertainty.adddt_translate(dt,diwpts["tdeviation"],diwpts["tturn"],fmodel)
     # fs = uncertainty.adddt_translate(dt,wpts_start,wpts_turn,fmodel)
-    fs = uncertainty.adddt_rotate(dt,wpts_start,wpts_turn,fmodel)
+    # fs = uncertainty.adddt_rotate(dt,wpts_start,wpts_turn,fmodel)
     # fs = uncertainty._contract(fold,fmodel,wpts_start,wpts_turn)
     #fs = uncertainty.adddt_rotate(dt,wpts_turn,wpts_rejoin,fmodel)
     # fs = uncertainty.contract(fs,fmodel,wpts_turn,wpts_rejoin,ratio)
@@ -287,7 +326,18 @@ def test_uncertainty(sit,sitflights,device):
     # fc = uncertainty.adddt_old(dangle,wpts_start[0].item(),(wpts_start[0].item(),wpts_turn[0].item()),fmodel)
     # fs = initialize(df,t_zero,device)
     # t = t_from_df(dfin,device)
-    t = torch.arange(0.,fmodel.duration.sum(axis=-1).max()+400,device=device).rename(T)
+    # t = torch.arange(0.,fmodel.duration.sum(axis=-1).max()+400,0.001,device=device).rename(T)
+    max_duration = (fdeviated.trejoin - fdeviated.tdeviation).max().item()
+    print(max_duration)
+    t = torch.arange(start=0.,end=max_duration,step=0.001,device=device).rename(T)
+    print(t)
+    print(fdeviated.tdeviation)
+    a,b = named.align_common(fdeviated.tdeviation,t)
+    t = (a + b).align_to(...,T)
+    t[t > a]=float("nan")
+    print(t.names)
+    # raise Exception
+    #t = torch.arange(fdeviated.tdeviation.min(),fdeviated.trejoin.max(),0.001,device=device).unsqueeze(0).rename(BATCH,T)
     # t = torch.arange(t.min(),t.max()+400,device=device).rename(T)
     #torch.tensor(dfin.timestamp.values-dfin.timestamp.values[0],device=device,dtype=torch.float32).rename(T)
     trajreal = trajreal_from_df(dfin,device)
@@ -299,6 +349,7 @@ def test_uncertainty(sit,sitflights,device):
     # print(fs.meanv())
     plot(f,t,xory)
     plot(fs,t,xory)
+    recplot(fdeviated.beacon.cpu(),plt.scatter)
     if not xory:
         plt.gca().axis('equal')
     print(f.duration)
@@ -318,13 +369,14 @@ def main():
     from traffic.data import opensky
     torch.random.manual_seed(0)
     fname = "data/AA38909998_1657916586_1657917209.json"
-    fname = "data/AA38932291_1657920628_1657920857.json"
+    #fname = "data/AA38932291_1657920628_1657920857.json"
     #fname = "data/AA38944134_1658001122_1658001604.json"
     sit = read_json.Situation.from_json(fname)#.cut()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     fdeviated = convert_situation_to_flights(sit,initialize,device,thresh=100)
     quality_check(sit,fdeviated)
-    # test_uncertainty(sit,sitflights,device)
+    test_uncertainty(sit,fdeviated,device)
+    raise Exception
     f = fdeviated.fxy[0]
     t = torch.arange(0,f.duration.sum(axis=-1).max()+100,device=device).rename(T)
     xory=False
@@ -336,8 +388,10 @@ def main():
     plt.scatter(deviated.x, deviated.y)
     t_pts = torch.tensor([fdeviated.tdeviation,fdeviated.tturn,fdeviated.trejoin],dtype=torch.float,names=(WPTS,),device=device)
     #t_pts = torch.tensor([fdeviated.tturn,fdeviated.tturn,fdeviated.tturn],dtype=torch.float,names=(WPTS,),device=device)
-    fnew = fdeviated.fxy[0].add_wpt_at_t(t_pts)
-    plot(fnew,t,xory)
+    xy_pts = traj.generate(fdeviated.fxy[0],t_pts.rename(**{WPTS:T})).cpu()
+    recplot(xy_pts,plt.scatter)
+    # fnew = fdeviated.fxy[0].add_wpt_at_t(t_pts)
+    # plot(fnew,t,xory)
     # raise Exception
     # print(fdeviated.fxy[0].wpts_at_t(t_pts))
     # raise Exception
