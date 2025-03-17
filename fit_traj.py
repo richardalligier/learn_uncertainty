@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from torchtraj import fit, traj
 import datetime
 import geosphere
+import operator as op
 
 KIM_PARAMETERS = {"angle_precision":0.5,"min_distance":200.}
 NM2METERS = 1852
@@ -310,7 +311,7 @@ def test_uncertainty(sit,fdeviated,device):
     # raise Exception
     #fs = uncertainty.addangle(dangle,wpts_start,wpts_turn,wpts_rejoin,fmodel)
     fs = uncertainty.addangle(dangle,diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fmodel)
-    modified_trejoin = uncertainty.gather_wpts(fs.duration.cumsum(axis=-1),diwpts["trejoin"]-1)
+    modified_trejoin = uncertainty.gather_wpts(fs.duration.cumsum(axis=-1),diwpts["trejoin"]-1)[...,0]
     print(f"{fdeviated.trejoin=}")
     print(f"{modified_trejoin=}")
     # fs = uncertainty.adddt_old(dt,wpts_start[0].item(),(wpts_start[0].item(),wpts_turn[0].item()),fmodel)
@@ -329,12 +330,14 @@ def test_uncertainty(sit,fdeviated,device):
     # t = torch.arange(0.,fmodel.duration.sum(axis=-1).max()+400,0.001,device=device).rename(T)
     max_duration = (fdeviated.trejoin - fdeviated.tdeviation).max().item()
     print(max_duration)
-    t = torch.arange(start=0.,end=max_duration,step=0.001,device=device).rename(T)
+    t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
     print(t)
     print(fdeviated.tdeviation)
-    a,b = named.align_common(fdeviated.tdeviation,t)
-    t = (a + b).align_to(...,T)
-    t[t > a]=float("nan")
+    # a,b = named.align_common(fdeviated.tdeviation,t)
+    t = op.add(*named.align_common(fdeviated.tdeviation,t)).align_to(...,T)
+    a,b = named.align_common(t,modified_trejoin)
+    mask = (a<=b) / (a<=b)
+    print(t)
     print(t.names)
     # raise Exception
     #t = torch.arange(fdeviated.tdeviation.min(),fdeviated.trejoin.max(),0.001,device=device).unsqueeze(0).rename(BATCH,T)
