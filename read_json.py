@@ -93,7 +93,7 @@ class  Situation:
         # projection = Projection(trajectories)
         # trajectories = projection.transform(trajectories)
         deviated = Deviated_aircraft(fjson[DEVIATED_AIRCRAFT])
-        trajectories = trajectories.query("flight_id == @deviated.flight_id")
+        trajectories = trajectories#.query("flight_id == @deviated.flight_id")
         return Situation(trajectories,deviated)
     def cut(self,start=None,stop=None):
         if start is None:
