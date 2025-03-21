@@ -204,7 +204,7 @@ def compute_t_rejoin(sit,thresh,nwpts):
     # print(l)
     # print(whichbeacon,selectednbok)
     # raise Exception
-
+ 
 # new axis SITUATION et axe OTHERS pour les autres avions
 def convert_situation_to_flights(sit,initialize,device,thresh_xy):
     df = sit.trajectories.copy()
