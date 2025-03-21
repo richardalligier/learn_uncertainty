@@ -16,7 +16,7 @@ import matplotlib.animation as animation
 
 
 
-KIM_PARAMETERS = {"angle_precision":0.5,"min_distance":200.}
+#KIM_PARAMETERS = {"angle_precision":0.5,"min_distance":200.}
 NM2METERS = 1852
 
 THRESH_XY_MODEL = 100#m
@@ -56,6 +56,8 @@ class SituationOthers:
             else:
                 raise Exception(f"dmap {k} not Tensor nor Flights")
         return cls(**res)
+    def dump(self):
+        pass
 
 class SituationDeviated(SituationOthers):
     def __init__(self,fid,fxy,fz,t,tdeviation,tturn,trejoin,beacon):#,wpt_start,wpt_turn,wpt_rejoin):
