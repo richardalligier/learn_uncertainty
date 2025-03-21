@@ -35,6 +35,10 @@ def unix2datetime(u):
 def check_is_named_tensor(t,dtype):
     return isinstance(t,torch.Tensor) and t.dtype == dtype
 
+
+def deserialize(a):
+    return a[0](a[1])
+
 class SituationOthers:
     def __init__(self,fid,fxy,fz,t):
         assert check_is_named_tensor(fid,torch.int64)
@@ -56,8 +60,24 @@ class SituationOthers:
             else:
                 raise Exception(f"dmap {k} not Tensor nor Flights")
         return cls(**res)
-    def dump(self):
-        pass
+    def serialize(self):
+        res = {}
+        for k,v in self.dictparams().items():
+            if isinstance(v,torch.Tensor):
+                res[k] = named.serialize(v)
+            elif isinstance(v,flights.Flights):
+                res[k] = v.serialize()
+            else:
+                raise Exception(f"dmap {k} not Tensor nor Flights")
+        return self.deserialize,res
+    @classmethod
+    def deserialize(cls,d):
+        res = {}
+        for k,v in d.items():
+            res[k]=deserialize(v)
+        return cls(**res)
+
+flights.add_tensors_operations(SituationOthers)
 
 class SituationDeviated(SituationOthers):
     def __init__(self,fid,fxy,fz,t,tdeviation,tturn,trejoin,beacon):#,wpt_start,wpt_turn,wpt_rejoin):
@@ -515,12 +535,15 @@ def main():
     from traffic.data import opensky
     torch.random.manual_seed(0)
     fname = "data/AA38909998_1657916586_1657917209.json"
-    #fname = "data/AA38932291_1657920628_1657920857.json"
+    fname = "data/AA38932291_1657920628_1657920857.json"
     #fname = "data/AA38944134_1658001122_1658001604.json"
     sit = read_json.Situation.from_json(fname)#.cut()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL)
-
+    torch.save(fothers.serialize(),fname[:-4]+"pt")
+    fothers = deserialize(torch.load(fname[:-4]+"pt")).to(device)
+    # raise Exception
+    fdeviated = fdeviated.clone()
     test_uncertainty(sit,fdeviated,fothers,device)
     raise Exception
     f = fdeviated.fxy[0]
