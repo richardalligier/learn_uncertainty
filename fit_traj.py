@@ -89,7 +89,7 @@ def quality_check(sit, sitflights):
         dxy = xy[i,:nt]-df[["x","y"]].values
         dist = torch.hypot(dxy[...,0],dxy[...,1])
         print(dist.min(),dist.mean(),dist.max())
-        assert(dist.max()<THRESH_XY_MODEL*1.3)
+        assert(dist.max()<THRESH_XY_MODEL)
         dz = (z[i,:nt]-df["altitude"].values).abs()
         print(dist.min(),dist.mean(),dist.max())
         # print(z)
@@ -208,6 +208,7 @@ def compute_t_rejoin(sit,thresh,nwpts):
 # new axis SITUATION et axe OTHERS pour les autres avions
 def convert_situation_to_flights(sit,initialize,device,thresh_xy):
     df = sit.trajectories.copy()
+    #df = df[df.flight_id.isin([38910912,38909998])]
     print(f"{df.flight_id.unique()=}")
     t_zero_situation = df.timestamp.values.min()
     df["timestamp"] = df["timestamp"] - t_zero_situation
@@ -222,10 +223,20 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy):
         lfid = []
         for fid,dfin in df.groupby("flight_id"):
             lfid.append(fid)
-            mask = douglas_peucker.douglas_peucker(dfin[["x","y"]].values,dfin.timestamp.values,eps=thresh_xy)
-            mask = np.logical_or(mask, dfin.timestamp.values==t_deviation)
-            mask = np.logical_or(mask, dfin.timestamp.values==t_turn)
-            mask = np.logical_or(mask, dfin.timestamp.values==t_rejoin)
+            lttoinclude = sorted([t_deviation,t_turn,t_rejoin])
+            vitoinclude = [np.where(dfin.timestamp.values==t)[0] for t in lttoinclude]
+            itoinclude = []
+            print(vitoinclude)
+            for vi in vitoinclude:
+                assert(len(vi)<=1)
+                if len(vi)==1:
+                    itoinclude.append(vi[0])
+            itoinclude.append(0)
+            itoinclude.append(len(dfin.timestamp.values)-1)
+            itoinclude = np.unique(np.sort(np.array(itoinclude)))
+            mask = np.zeros(len(dfin.timestamp.values),dtype=bool)
+            for (ia,ib) in zip(itoinclude[:-1],itoinclude[1:]):
+                mask[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_xy)
             dfwpts = dfin.where(pd.Series(mask,index=dfin.index)).dropna(subset=["x"]).reset_index()
             fxy,fz = initialize(dfwpts,device)
             fxy = fxy.shift_xy0(float(dfwpts.timestamp.values[0]))
@@ -331,7 +342,7 @@ def plotanimate(lxy,s=1.5):
         # print(pos)
         # raise Exception
         for scat,xy in zip(scats,lxy):
-            pos = xy[...,i:i+1:4,:].rename(None).flatten(end_dim=-2).numpy()
+            pos = xy[...,i:i+40:4,:].rename(None).flatten(end_dim=-2).numpy()
             scat.set_offsets(pos)
         return scats
     ani = animation.FuncAnimation(fig, func=animate, init_func=init, frames=lxy[0].shape[-2],
@@ -403,11 +414,11 @@ def test_uncertainty(sit,fdeviated,fothers,device):
     # wpts_rejoin = fmodel.wpts_at_t(fdeviated.trejoin)
     for v in ["tdeviation","tturn","trejoin"]:
         print(f"{v} {diwpts[v]=}")
-    dangle = 1*torch.tensor([-0.1,0.1],device=device).reshape(-1).rename(DANGLE)
+    dangle = 1*torch.tensor([-0.,0.],device=device).reshape(-1).rename(DANGLE)
     # dt = 300+20*torch.arange(1,device=device).reshape(-1).rename(DT)
-    dt = 1*torch.tensor([-10,10],device=device).reshape(-1).rename(DT)
-    dspeed = torch.tensor([0.9,1.1],device=device).reshape(-1).rename(DSPEED)
-    ldspeed = torch.tensor([0.9,1.1],device=device).reshape(-1).rename(LDSPEED)
+    dt = 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT)
+    dspeed = torch.tensor([1.,1.],device=device).reshape(-1).rename(DSPEED)
+    ldspeed = torch.tensor([1.,1.],device=device).reshape(-1).rename(LDSPEED)
     # dangle[0]=1#-0.3
     # print(dangle)
     #dt = 40+torch.arange(1,device=device,dtype=torch.int64).reshape(1,1).rename(BATCH,DANGLE)#torch.arangeones_like(wpts_turn)*10#np.pi/2
@@ -469,6 +480,8 @@ def test_uncertainty(sit,fdeviated,fothers,device):
     # raise Exception
     # dist = op.sub(*named.align_common(xys,xyo.rename(**{BATCH:OTHERS}))).abs().align_to(...,OTHERS,T,XY)
     # plotanimate([xys.cpu()],s=4)
+    print(xys.shape,xys.names)
+    print(xyo.shape,xyo.names)
     plotanimate([xys.cpu(),xyoc.cpu(),xyon.cpu()],s=4)
     # print(f.meanv())
     # print(f.duration)
