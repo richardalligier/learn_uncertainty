@@ -102,7 +102,7 @@ def quality_check(sit, sitflights):
     xy = traj.generate(sitflights.fxy,sitflights.t).cpu()
     z =  traj.generate(sitflights.fz,sitflights.t)[...,0].cpu()
     for i,fid in enumerate(sitflights.fid):
-        print(f"{fid=}")
+        # print(f"{fid=}")
         df = sit.trajectories.query("flight_id==@sitflights.fid[@i].item()")
         nt = df.timestamp.values.shape[0]
         assert((sitflights.t[i].cpu()[:nt] == df.timestamp.values-sit.trajectories.timestamp.min()).all())
@@ -110,13 +110,13 @@ def quality_check(sit, sitflights):
             assert(sitflights.tdeviation==sit.deviated.start-t_zero_situation)
         dxy = xy[i,:nt]-df[["x","y"]].values
         dist = torch.hypot(dxy[...,0],dxy[...,1])
-        print(dist.min(),dist.mean(),dist.max())
+        # print(dist.min(),dist.mean(),dist.max())
         assert(dist.max()<THRESH_XY_MODEL)
         dz = (z[i,:nt]-df["altitude"].values).abs()
-        print(dist.min(),dist.mean(),dist.max())
+        # print(dist.min(),dist.mean(),dist.max())
         # print(z)
         # print(df[["x","y","altitude"]])
-        assert(dist.max()<THRESH_Z_MODEL*1.3)
+        assert(dist.max()<THRESH_Z_MODEL)
         # raise Exception
         # raise Exception
         # dfin = sit..query("flight_id == @fid")
@@ -146,19 +146,19 @@ def initialize_gen_xyz(df,device,v):
     dxy = torch.linalg.norm((trajreal[...,1:,:]-trajreal[...,:-1,:]).rename(None),dim=-1).rename(*trajreal.names[:-1])
     # print(dxy.shape,dxy.names,dx.shape,trajreal.shape)
     duration = t[...,1:,0]-t[...,:-1,0]
-    print(duration)
-    # print(t)
-    # print(duration,duration.shape)
-    print(trajreal)
-    print(trajreal.shape)
-    print(dxy)
+    # print(duration)
+    # # print(t)
+    # # print(duration,duration.shape)
+    # print(trajreal)
+    # print(trajreal.shape)
+    # print(dxy)
     v = dxy / duration
     wpts = trajreal[...,1:,:]
     wpts = wpts.rename(**{T:WPTS})
     v = v.rename(**{T:WPTS})
     turn_rate = 0.01 * torch.ones((1,1),device=device).rename(BATCH,WPTS)
     #turn_rate = torch.ones_like(duration).rename(*duration.names)#.rename(*duration.names)
-    print(turn_rate.names,duration.names)
+    # print(turn_rate.names,duration.names)
     assert(turn_rate.shape==(1,1))
     return {"xy0":xy0,"v":v, "turn_rate":turn_rate, "wpts":wpts}
 
@@ -560,14 +560,12 @@ def main():
         description='fit trajectories and save them in folders',
     )
     parser.add_argument('-json')
-    parser.add_argument('-deviated')
-    parser.add_argument('-others')
+    parser.add_argument('-situation')
     args = parser.parse_args()
     sit = read_json.Situation.from_json(args.json)
     device = "cpu"
     fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL)
-    torch.save(fdeviated.serialize(),args.deviated)
-    torch.save(fothers.serialize(),args.others)
+    torch.save((fdeviated.serialize(),fothers.serialize()),args.situation)
 
 if __name__ == "__main__":
     main()
