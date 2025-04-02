@@ -196,12 +196,12 @@ def find_longest_aligned(df,beacons,thresh):
         d=geosphere.distance_ortho_pygplates(lat1,lon1,lat2,lon2,latm,lonm)
         l.append(d)
     res=torch.tensor(l).cummax(axis=1).values
-    print(res)
+    # print(res)
     npts = res.shape[1]
     mask = res > thresh
     res = res - torch.arange(npts) * thresh
     res[mask]=0.
-    print(res)
+    # print(res)
     vi,i = torch.min(res,dim=0,keepdim=False)
     j = torch.min(vi,dim=0,keepdim=False).indices.item()
     i = i[j].item()
