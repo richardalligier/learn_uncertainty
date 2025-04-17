@@ -19,7 +19,6 @@ DT1 = "dt1"
 DSPEED = "dspeed"
 LDSPEED = "ldspeed"
 
-
 def plotanimate(lxy,s=1.5):
     fig,ax = plt.subplots() # initialise la figure
     scats = tuple(ax.scatter([],[],s=s) for _ in lxy)
@@ -75,15 +74,13 @@ def plotanimate(lxy,s=1.5):
 def compute_iwpts(f,dtimes):
     stimes=set([t for times in dtimes.values() for t in times.values()])
     print(len(stimes))
-    raise Exception
     for t in stimes:
-        f.fxy = f.fxy.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))
-        f.fz = f.fz.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))
-    diwpts = {}
-    for v in ["tdeviation","tturn","trejoin"]:
-        diwpts[v]= fdeviated.fxy.wpts_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
-        dothersiwpts[v]= fothers.fxy.wpts_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
-    return diwpts
+        f = f.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))
+    d={t:f.wpts_at_t(named.unsqueeze(t,-1,WPTS)) for t in stimes}
+    res = {}
+    for k,times in dtimes.items():
+        res[k]={kk:d[t] for kk,t in times.items()}
+    return f,res
 
 
 

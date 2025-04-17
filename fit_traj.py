@@ -473,7 +473,7 @@ def save_situation(o,fname):
     torch.save(serialize(o),fname)
 
 def load_situation(fname):
-    return deserialize(torch.load(fname,map_location="cpu"))#.items()#{k:deserialize(v) for k,v in torch.load(fname,map_location="cpu").items()}
+    return deserialize(torch.load(fname,map_location="cpu",weights_only=False))#.items()#{k:deserialize(v) for k,v in torch.load(fname,map_location="cpu").items()}
 
 def main():
     import argparse
