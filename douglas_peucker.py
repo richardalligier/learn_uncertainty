@@ -17,18 +17,21 @@ def buildTemporalEuclide(xy,t,i,j):
     dt = t[j]-t[i]
     lam = ((t[i:j+1]-t[i]) / dt)[:,None]
     exy = xy[i] * (1-lam) + lam * xy[j] - xy[i:j+1]
-    d = np.linalg.norm(exy,axis=-1)#np.hypot(exy[...,0],exy[...,1])
+    assert(exy.shape[-1]==4)
+    d = np.maximum(np.linalg.norm(exy[...,2:],axis=-1),np.linalg.norm(exy[...,:2],axis=-1))#np.hypot(exy[...,0],exy[...,1])
     assert(d.shape[0]==j-i+1)
     return ResLine(i,j,d)
 
 
 def buildEuclide(xy,t,i,j):
     v = xy[j]-xy[i]
-    print(dir(np.linalg))
+    # print(dir(np.linalg))
     lam = np.sum(v[None,:]*(xy[i:j+1]-xy[i]),axis=-1)/np.dot(v,v)
     lam = np.clip(lam,a_min=0,a_max=1)
     exy = xy[i] + v * lam[:,None] - xy[i:j+1]
-    d = np.linalg.norm(exy,axis=-1)
+    assert(exy.shape[-1]==4)
+    d = np.maximum(np.linalg.norm(exy[...,2:],axis=-1),np.linalg.norm(exy[...,:2],axis=-1))#np.hypot(exy[...,0],exy[...,1])
+    # d = np.linalg.norm(exy,axis=-1)
     assert(d.shape[0]==j-i+1)
     return ResLine(i,j,d)
 
@@ -50,11 +53,11 @@ def douglas_peucker(xy,t,eps,build=buildTemporalEuclide):
     n = xy.shape[0]
     res = aux(0,n-1)
     mask = np.zeros(n,dtype=bool)
-    print(mask)
+    # print(mask)
     for r in res:
-        print(r)
+        # print(r)
         (i,j) = r.interval
         mask[i] = True
         mask[j] = True
-    print(mask)
+    # print(mask)
     return mask#[resline.reindex(indexes) for resline in res]
