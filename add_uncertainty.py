@@ -18,6 +18,7 @@ DT0 = "dt0"
 DT1 = "dt1"
 DSPEED = "dspeed"
 LDSPEED = "ldspeed"
+VSPEED = "vspeed"
 
 def plotanimate(lxy,s=1.5,margin=20.,equal=True):
     fig,ax = plt.subplots() # initialise la figure
@@ -54,6 +55,7 @@ def plotanimate(lxy,s=1.5,margin=20.,equal=True):
 
 
 def apply_uncertainty(f,ljob):
+    f = f.clone()
     for transfo in ljob:
         f=transfo(f)
     return f
@@ -65,6 +67,11 @@ def apply_uncertainty_others(fothers,dothersiwpts,uparams):
         lambda f: uncertainty.change_longitudinal_speed(uxy[LDSPEED],dixy[LDSPEED]["tdeviation"],dixy[LDSPEED]["trejoin"],f)
     ]
     fothers.fxy = apply_uncertainty(fothers.fxy,ljob_xy)
+    uz = uparams["fz"]
+    ljob_z = [
+        lambda f: uncertainty.change_vertical_speed(uz[VSPEED],f)
+    ]
+    fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
     return fothers
 
 def apply_uncertainty_deviated(fdeviated,diwpts,uparams):
@@ -110,7 +117,8 @@ def precompute_situation_uncertainty(sit):
         "others":{
             "fxy": {
                 LDSPEED: timesofinterest,
-            }
+            },
+            "fz":{}
         }
     }
     duncertainty = {
@@ -170,6 +178,9 @@ def main():
         "others":{
             "fxy":{
                 LDSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(LDSPEED),
+            },
+            "fz":{
+                VSPEED: 1*torch.tensor([0.5,1.5],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
@@ -195,9 +206,14 @@ def main():
             plt.show()
     elif args.wpts =="z":
         for k,wpts in wpts_z.items():
-            print(k)
-            recplot(wpts,scatter_with_number)
-            plt.show()
+            if k=="others":
+                print(k)
+                wpts =wpts[6,:] 
+                print(wpts)
+                #python3 add_uncertainty.py -situation ./situations/38893618_1657871463_1657872229.situation -wpts z
+                recplot(wpts,scatter_with_number)
+                plt.show()
+    raise Exception
     if args.animate == "xy":
         plotanimate([xy_u["deviated"],apply_mask(xy_u["others"],diffz/diffz),apply_mask(xy_u["others"],(~diffz)/(~diffz))],s=4)
     elif args.animate =="z":
