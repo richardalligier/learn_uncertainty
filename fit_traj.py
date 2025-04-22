@@ -240,15 +240,32 @@ def initialize_gen_xyz(df,device,v):
     return {"xy0":xy0,"v":v, "turn_rate":turn_rate, "wpts":wpts}
 
 def initialize(df,device):#(trajreal,t):
+    # res = initialize_gen_xyz(df,device,["x","y"])
+    # fxy=flights.Flights.from_wpts(**res)
+    # assert(fxy.turn_rate.shape==(1,1))
+    # fxy.duration = torch.round(fxy.duration)
+    # res = initialize_gen_xyz(df,device,["timestamp","altitude"])
+    # fz=flights.Flights.from_wpts(**res)
+    # assert(fz.turn_rate.shape==(1,1))
+    # fz.duration = torch.round(fz.duration)
+    # return fxy,fz
+    return initialize_xy(df,device),initialize_z(df,device)
+
+
+
+def initialize_xy(df,device):#(trajreal,t):
     res = initialize_gen_xyz(df,device,["x","y"])
     fxy=flights.Flights.from_wpts(**res)
     assert(fxy.turn_rate.shape==(1,1))
     fxy.duration = torch.round(fxy.duration)
+    return fxy
+def initialize_z(df,device):#(trajreal,t):
     res = initialize_gen_xyz(df,device,["timestamp","altitude"])
     fz=flights.Flights.from_wpts(**res)
     assert(fz.turn_rate.shape==(1,1))
     fz.duration = torch.round(fz.duration)
-    return fxy,fz
+    return fz
+
 
 # def initialize_acc(df,device):#(trajreal,t):
 #     t_zero,d=initialize_gen(df,device)
@@ -344,12 +361,17 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
                 # mask_xy[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_xy)
                 # mask_z[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["altitude","timestamp"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_z)
                 mask[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["timestamp","altitude","x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=min(thresh_z,thresh_xy))
-            # mask = np.logical_or(mask_z,mask_xy)
+                # mask_xy[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_xy)
+                # mask_z[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["timestamp","altitude"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_z)
             # print(mask)
+            # mask = np.logical_or(mask_z,mask_xy)
             dfwpts = dfin.where(pd.Series(mask,index=dfin.index)).dropna(subset=["x"]).reset_index()
+            # # assert (dfwpts.timestamp.values[0]==dfin.timestamp.values[0])
             fxy,fz = initialize(dfwpts,device)
-            fxy = fxy.shift_xy0(float(dfwpts.timestamp.values[0]))
-            fz = fz.shift_xy0(float(dfwpts.timestamp.values[0]))
+            # fxy = initialize_xy(dfin.where(pd.Series(mask_xy,index=dfin.index)).dropna(subset=["x"]).reset_index(),device)
+            # fz = initialize_z(dfin.where(pd.Series(mask_z,index=dfin.index)).dropna(subset=["x"]).reset_index(),device)
+            fxy = fxy.shift_xy0(float(dfin.timestamp.values[0]))
+            fz = fz.shift_xy0(float(dfin.timestamp.values[0]))
             assert(fxy.turn_rate.shape==(1,1))
             assert(fz.turn_rate.shape==(1,1))
             lfxy.append(fxy)

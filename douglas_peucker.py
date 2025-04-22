@@ -19,6 +19,8 @@ def buildTemporalEuclide(xy,t,i,j):
     exy = xy[i] * (1-lam) + lam * xy[j] - xy[i:j+1]
     assert(exy.shape[-1]==4)
     d = np.maximum(np.linalg.norm(exy[...,2:],axis=-1),np.linalg.norm(exy[...,:2],axis=-1))#np.hypot(exy[...,0],exy[...,1])
+    # assert(exy.shape[-1]==2)
+    # d = np.linalg.norm(exy,axis=-1)
     assert(d.shape[0]==j-i+1)
     return ResLine(i,j,d)
 
@@ -31,6 +33,7 @@ def buildEuclide(xy,t,i,j):
     exy = xy[i] + v * lam[:,None] - xy[i:j+1]
     assert(exy.shape[-1]==4)
     d = np.maximum(np.linalg.norm(exy[...,2:],axis=-1),np.linalg.norm(exy[...,:2],axis=-1))#np.hypot(exy[...,0],exy[...,1])
+    # assert(exy.shape[-1]==2)
     # d = np.linalg.norm(exy,axis=-1)
     assert(d.shape[0]==j-i+1)
     return ResLine(i,j,d)
