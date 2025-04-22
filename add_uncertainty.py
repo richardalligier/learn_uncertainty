@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from torchtraj.utils import T, XY,WPTS
 from torchtraj import flights, named, uncertainty
-from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict,masked_generate,plot,recplot
+from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict,plot,recplot,scatter_with_number
 import pandas as pd
 import matplotlib.pyplot as plt
 from torchtraj import fit, traj
@@ -19,18 +19,20 @@ DT1 = "dt1"
 DSPEED = "dspeed"
 LDSPEED = "ldspeed"
 
-def plotanimate(lxy,s=1.5):
+def plotanimate(lxy,s=1.5,margin=20.,equal=True):
     fig,ax = plt.subplots() # initialise la figure
     scats = tuple(ax.scatter([],[],s=s) for _ in lxy)
-    margin = 200000.
-    xmin = min([named.nanmin(xy[...,0].rename(None)) for xy in lxy])-margin
-    xmax = max([named.nanmax(xy[...,0].rename(None)) for xy in lxy])+margin
-    ymin = min([named.nanmin(xy[...,1].rename(None)) for xy in lxy])-margin
-    ymax = max([named.nanmax(xy[...,1].rename(None)) for xy in lxy])+margin
+    xmin = min([named.nanmin(xy[...,0].rename(None)) for xy in lxy]).item()-margin
 
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-    plt.gca().axis('equal')
+    xmax = max([named.nanmax(xy[...,0].rename(None)) for xy in lxy]).item()+margin
+    ymin = min([named.nanmin(xy[...,1].rename(None)) for xy in lxy]).item()-margin
+    ymax = max([named.nanmax(xy[...,1].rename(None)) for xy in lxy]).item()+margin
+    # print(xmin,xmax)
+    # print(ymin,ymax)
+    # raise Exception
+    plt.axis([xmin, xmax, ymin, ymax])
+    if equal:
+        plt.gca().set_aspect('equal', adjustable='box')
     def init():
         for scat in scats:
             scat.set_offsets(np.array([[],[]]).T)
@@ -51,24 +53,77 @@ def plotanimate(lxy,s=1.5):
 
 
 
+def apply_uncertainty(f,ljob):
+    for transfo in ljob:
+        f=transfo(f)
+    return f
 
+def apply_uncertainty_others(fothers,dothersiwpts,uparams):
+    dixy = dothersiwpts["fxy"]
+    uxy = uparams["fxy"]
+    ljob_xy = [
+        lambda f: uncertainty.change_longitudinal_speed(uxy[LDSPEED],dixy[LDSPEED]["tdeviation"],dixy[LDSPEED]["trejoin"],f)
+    ]
+    fothers.fxy = apply_uncertainty(fothers.fxy,ljob_xy)
+    return fothers
 
+def apply_uncertainty_deviated(fdeviated,diwpts,uparams):
+    dixy = diwpts["fxy"]
+    uxy = uparams["fxy"]
+    ljob_xy = [
+        lambda f:uncertainty.addangle(uxy[DANGLE],dixy[DANGLE]["tdeviation"],dixy[DANGLE]["tturn"],dixy[DANGLE]["trejoin"],f,beacon=fdeviated.beacon),
+        lambda f:uncertainty.adddt_rotate(uxy[DT0],dixy[DT0]["tdeviation"],dixy[DT0]["tturn"],dixy[DT0]["trejoin"],f,beacon=fdeviated.beacon),
+        lambda f:uncertainty.adddt_rotate(uxy[DT1],dixy[DT1]["tturn"],dixy[DT1]["tturn"],dixy[DT1]["trejoin"],f,beacon=fdeviated.beacon),
+        lambda f:uncertainty.changespeed_rotate(uxy[DSPEED],dixy[DSPEED]["tdeviation"],dixy[DSPEED]["tturn"],dixy[DSPEED]["trejoin"],f,beacon=fdeviated.beacon),
+    ]
+    fdeviated.fxy = apply_uncertainty(fdeviated.fxy,ljob_xy)
+    return fdeviated
 
-# def compute_wpts_uncertainty(fdeviated,fothers):
-#     diwpts = {}
-#     dtwpts = {}
-#     for v in ["tdeviation","tturn","trejoin"]:
-#         dtwpts[v] = getattr(fdeviated,v)
-#         fdeviated.fxy = fdeviated.fxy.add_wpt_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
-#         fothers.fxy = fothers.fxy.add_wpt_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
-#     print(fdeviated.fxy.duration.cumsum(axis=-1))
-#     print(fothers.fxy.duration.cumsum(axis=-1))
-#     # raise Exception
-#     dothersiwpts = {}
-#     for v in ["tdeviation","tturn","trejoin"]:
-#         diwpts[v]= fdeviated.fxy.wpts_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
-#         dothersiwpts[v]= fothers.fxy.wpts_at_t(named.unsqueeze(dtwpts[v],-1,WPTS))
-#     return diwpts,dothersiwpts
+def apply_mask(res,mask):
+    return res * mask.align_as(res)
+
+class WithUncertainty:
+    def __init__(self,sitf,dtimes,apply_uncertainty):
+        self.sitf = sitf.clone()
+        self.idtimes = getiwpts(self.sitf,dtimes)
+        self.apply_uncertainty = apply_uncertainty
+    def add_uncertainty(self,uparams):
+        return self.apply_uncertainty(self.sitf.clone(),self.idtimes,uparams)
+    def generate_xy(self,uparams,t):
+        return self.add_uncertainty(uparams).generate_xy(t)
+    def generate_z(self,uparams,t):
+        return self.sitf.generate_z(t)
+    def generate_tz(self,uparams,t):
+        return self.sitf.generate_tz(t)
+
+def precompute_situation_uncertainty(sit):
+    timesofinterest = {k:getattr(sit["deviated"],k) for k in ["tdeviation","tturn","trejoin"]}
+    dtimes = {
+        "deviated":{
+            "fxy": {
+                DANGLE: timesofinterest,
+                DT0: modify(timesofinterest,{"tdeviation":lambda x:x-1}),
+                DT1: timesofinterest,
+                DSPEED: timesofinterest,
+            }
+        },
+        "others":{
+            "fxy": {
+                LDSPEED: timesofinterest,
+            }
+        }
+    }
+    duncertainty = {
+        "deviated":apply_uncertainty_deviated,
+        "others":apply_uncertainty_others
+    }
+    return {k:WithUncertainty(s,dtimes[k],duncertainty[k]) for k,s in sit.items()}
+
+def modify(dico,dmodif):
+    res = dico.copy()
+    for k,f in dmodif.items():
+        res[k]=f(res[k])
+    return res
 
 
 def compute_iwpts(f,dtimes):
@@ -82,97 +137,13 @@ def compute_iwpts(f,dtimes):
         res[k]={kk:d[t] for kk,t in times.items()}
     return f,res
 
-
-
-def uncertainty_others(fdeviated,fothers,diwpts,dothersiwpts):
-    fdeviated.fxy = uncertainty.addangle(dangle,diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)
-    # t0
-    fdeviated.fxy = uncertainty.adddt_rotate(dt.rename(**{DT:"dt0"}),diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)
-    # t1
-    fdeviated.fxy = uncertainty.adddt_rotate(dt,diwpts["tturn"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)
-    # speed
-    fdeviated.fxy = uncertainty.changespeed_rotate(dspeed,diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)#,contract=False)
-    # longitudinalspeed
-    fothers.fxy = uncertainty.change_longitudinal_speed(ldspeed,dothersiwpts["tdeviation"],dothersiwpts["trejoin"],fothers.fxy)
-    return fdeviated,fothers,diwpts
-
-def uncertainty_deviated(fdeviated,diwpts):
-    fdeviated.fxy = uncertainty.addangle(dangle,diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)
-    # t0
-    fdeviated.fxy = uncertainty.adddt_rotate(dt.rename(**{DT:"dt0"}),diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)
-    # t1
-    fdeviated.fxy = uncertainty.adddt_rotate(dt,diwpts["tturn"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)
-    # speed
-    fdeviated.fxy = uncertainty.changespeed_rotate(dspeed,diwpts["tdeviation"],diwpts["tturn"],diwpts["trejoin"],fdeviated.fxy,beacon=fdeviated.beacon)#,contract=False)
-    # longitudinalspeed
-    fothers.fxy = uncertainty.change_longitudinal_speed(ldspeed,dothersiwpts["tdeviation"],dothersiwpts["trejoin"],fothers.fxy)
-    return fdeviated,fothers,diwpts
-
-def generate(fdeviated,fothers,diwpts):
-    fs = fdeviated.fxy
-    fo = fothers.fxy
-    modified_trejoin = uncertainty.gather_wpts(fs.duration.cumsum(axis=-1),diwpts["trejoin"]-1)[...,0]
-    print(f"{fdeviated.trejoin=}")
-    print(f"{modified_trejoin=}")
-    max_duration = (fdeviated.trejoin - fdeviated.tdeviation).max().item()
-    print(max_duration)
-    t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
-    print(t)
-    print(fdeviated.tdeviation)
-    # a,b = named.align_common(fdeviated.tdeviation,t)
-    t = op.add(*named.align_common(fdeviated.tdeviation,t)).align_to(...,T)
-    t = torch.arange(start=0.,end=t.max(),step=1,device=device).rename(T)
-    # print(fs.duration)
-    #f = fit.fit(fmodel,trajreal,t,traj.generate,10000)
-    f = fs
-    zs = masked_generate(fs.fz,t,fs.t)[...,0]
-    zo = masked_generate(fo.fz,t,fo.t)[...,0]
-    mask_closez = op.sub(*named.align_common(zs,zo)).abs() < 500.
-    mask_not_closez = torch.logical_not(mask_closez)
-    mask_closez = mask_closez / mask_closez
-    mask_not_closez = mask_not_closez / mask_not_closez
-    # print(mask_closez)
-    xys = masked_generate(fs,t,fdeviated.t)
-    xys = xys #* mask_closez.align_as(xys)
-    xyo = masked_generate(fo,t,fothers.t)# * mask_closez / mask_closez
-    xyoc = xyo * mask_closez.align_as(xyo)
-    xyon = xyo * mask_not_closez.align_as(xyo)
-    return [xys.cpu(),xyoc.cpu(),xyon.cpu()]
-    # # print(xyo)
-    # # print(xyo.shape)
-    # # print(xys)
-    # # print(xys.shape)
-    # # print(zs)
-    # # print(zo)
-    # # raise Exception
-    # # dist = op.sub(*named.align_common(xys,xyo.rename(**{BATCH:OTHERS}))).abs().align_to(...,OTHERS,T,XY)
-    # # plotanimate([xys.cpu()],s=4)
-    # print(xys.shape,xys.names)
-    # print(xyo.shape,xyo.names)
-    # plotanimate([xys.cpu(),xyoc.cpu(),xyon.cpu()],s=4)
-    # # print(f.meanv())
-    # # print(f.duration)
-    # # print(fs.meanv())
-    # #plot(fothers.fxy,t,xory)
-    # print(diwpts["tdeviation"])
-    # print(diwpts["tturn"])
-    # print(diwpts["trejoin"])
-    # xory=False
-    # plot(fs,t,xory)
-    # if not xory:
-    #     recplot(fdeviated.beacon.cpu(),plt.scatter)
-    #     plt.gca().axis('equal')
-    # print(f)
-    # print(fs)
-    # # print(fdeviated.tdeviation)
-    # # print(traj.generate(f,t))
-    # plt.show()
-def modify(dico,dmodif):
-    res = dico.copy()
-    for k,f in dmodif.items():
-        res[k]=f(res[k])
+def getiwpts(sitf,dtimes):
+    ditimes = {k:compute_iwpts(getattr(sitf,k),v) for k,v in dtimes.items()}
+    res = {}
+    for k,(f,iwpts) in ditimes.items():
+        res[k]=iwpts
+        setattr(sitf,k,f)
     return res
-
 
 def main():
     import argparse
@@ -180,36 +151,56 @@ def main():
         description='fit trajectories and save them in folders',
     )
     parser.add_argument('-situation')
+    parser.add_argument('-animate',default=None)
+    parser.add_argument('-wpts',default=None)
     args = parser.parse_args()
     # print(args.json)
     sit = load_situation(args.situation)
     device="cpu"
-    dtimes = {k:getattr(sit["deviated"],k) for k in ["tdeviation","tturn","trejoin"]}
-    dtimes_deviated = {
-        DANGLE: dtimes,
-        DT0: modify(dtimes,{"tdeviation":lambda x:x-1}),
-        DT1: dtimes,
-        DSPEED: dtimes,
-    }
-    dtimes_others = {
-        LDSPEED: dtimes,
-    }
-    ditimes_deviated = compute_iwpts(sit["deviated"],dtimes_deviated)
 
-    deviated_uncertainty = {
-        DANGLE: torch.tensor([-0.,0.],device=device).reshape(-1).rename(DANGLE),
-        DT0: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT0),
-        DT1: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT1),
-        DSPEED: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DSPEED),
+    uparams = {
+        "deviated":{
+            "fxy":{
+                DANGLE: torch.tensor([-0.2,0.2],device=device).reshape(-1).rename(DANGLE),
+                DT0: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT0),
+                DT1: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT1),
+                DSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(DSPEED),
+            }
+        },
+        "others":{
+            "fxy":{
+                LDSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(LDSPEED),
+            }
+        }
     }
-    others_uncertainty = {
-        LDSPEED: 1*torch.tensor([0,0],device=device).reshape(-1).rename(LDSPEED),
-    }
-    others_uncertainty_delta = {}
-    fdeviated = uncertainty_deviated(sit["deviated"],diwpts)
-    fothers = uncertainty_others(sit["others"],diwpts)
-    situn = add_uncertainty(sit["deviated"],sit["others"],*diwpts)
-    lxys = generate(*situn)
-    plotanimate(lxys,s=4)
+    sit_uncertainty = precompute_situation_uncertainty(sit)
+    max_duration = max(s.t.max() for s in sit.values())
+    t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
+    masked_t = {k:s.generate_mask(t,thresh=20) for k,s in sit.items()}
+    xy_u = {k:apply_mask(s.generate_xy(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
+    z_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
+    diffz = torch.abs(z_u["others"]-z_u["deviated"].align_as(z_u["others"])) < 800
+
+    wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts() for k,s in sit_uncertainty.items()}
+    wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts() for k,s in sit_uncertainty.items()}
+
+    # raise Exception
+    if args.wpts == "xy":
+        for k,wpts in wpts_xy.items():
+            print(k)
+            print(wpts)
+            print(wpts.shape,wpts.names)
+            # raise Exception
+            recplot(wpts,scatter_with_number)
+            plt.show()
+    elif args.wpts =="z":
+        for k,wpts in wpts_z.items():
+            print(k)
+            recplot(wpts,scatter_with_number)
+            plt.show()
+    if args.animate == "xy":
+        plotanimate([xy_u["deviated"],apply_mask(xy_u["others"],diffz/diffz),apply_mask(xy_u["others"],(~diffz)/(~diffz))],s=4)
+    elif args.animate =="z":
+        plotanimate(list(z_u.values()),s=4,margin=10,equal=False)
 if __name__ == "__main__":
     main()

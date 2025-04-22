@@ -28,11 +28,12 @@ def main():
     parser.add_argument('-dsituation')
     args = parser.parse_args()
     dsit = load_situation(args.dsituation)
+
     what = ["deviated","others"]
     for k,dsitk in dsit.items():
         t = dsitk["deviated"].generate_trange_conflict(step=1)
         dsitkxy = [dsitk[w].generate_xy(t) for w in what]
-        dsitkz = [dsitk[w].generate_xy(t) for w in what]
+        dsitkz = [dsitk[w].generate_z(t) for w in what]
         toiterate = [getattr(dsitk["deviated"],x) for x in ["fid","tzero","tdeviation","tturn"]]+dsitkxy+dsitkz+[t]
         print(dsitkxy[0].shape)
         for fid,tzero,tdeviation,tturn,xyrd,xyro,zrd,zro,ti in zip(*toiterate):
@@ -41,11 +42,12 @@ def main():
             s = load_situation(os.path.join(args.foldersituations,fname))
             xyso = s["others"].generate_xy(ti)
             xysd = s["deviated"].generate_xy(ti)
-            # print(xyro.shape,xyrd.shape)
-            # raise Exception
-            # print(xysd.shape,xyso.shape,xyrd.shape)
             assert(torch.abs(xysd-xyrd).max()<0.1)
             assert(torch.abs(xyso-xyro).max()<0.1)
+            zso = s["others"].generate_z(ti)
+            zsd = s["deviated"].generate_z(ti)
+            assert(torch.abs(zsd-zrd).max()<0.1)
+            assert(torch.abs(zso-zro).max()<0.1)
             # print((xyso==xyro).rename(None).all())
     #         raise Exception
     # raise Exception

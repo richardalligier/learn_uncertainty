@@ -15,7 +15,6 @@ import operator as op
 import matplotlib.animation as animation
 
 
-
 #KIM_PARAMETERS = {"angle_precision":0.5,"min_distance":200.}
 NM2METERS = 1852
 
@@ -119,8 +118,10 @@ class SituationOthers:
 
     def generate_xy(self,t):
         return traj.generate(self.fxy,t)
+    def generate_tz(self,t):
+        return traj.generate(self.fz,t)#[...,0]
     def generate_z(self,t):
-        return traj.generate(self.fz,t)[...,0]
+        return traj.generate(self.fz,t)[...,1]
     @classmethod
     def cat(cls,lsit,dimname):
         res =  {k:[getattr(s,k) for s in lsit] for k in lsit[0].dictparams()}
@@ -172,8 +173,8 @@ class SituationDeviated(SituationOthers):
 
 def quality_check(sit, sitflights):
     t_zero_situation = sit.trajectories.timestamp.min()
-    xy = traj.generate(sitflights.fxy,sitflights.t).cpu()
-    z =  traj.generate(sitflights.fz,sitflights.t)[...,0].cpu()
+    xy = sitflights.generate_xy(sitflights.t).cpu()
+    z =  sitflights.generate_z(sitflights.t).cpu()
     for i,fid in enumerate(sitflights.fid):
         # print(f"{fid=}")
         df = sit.trajectories.query("flight_id==@sitflights.fid[@i].item()")
@@ -243,7 +244,7 @@ def initialize(df,device):#(trajreal,t):
     fxy=flights.Flights.from_wpts(**res)
     assert(fxy.turn_rate.shape==(1,1))
     fxy.duration = torch.round(fxy.duration)
-    res = initialize_gen_xyz(df,device,["altitude","timestamp"])
+    res = initialize_gen_xyz(df,device,["timestamp","altitude"])
     fz=flights.Flights.from_wpts(**res)
     assert(fz.turn_rate.shape==(1,1))
     fz.duration = torch.round(fz.duration)
@@ -342,7 +343,7 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
             for (ia,ib) in zip(itoinclude[:-1],itoinclude[1:]):
                 # mask_xy[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_xy)
                 # mask_z[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["altitude","timestamp"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=thresh_z)
-                mask[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["altitude","timestamp","x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=min(thresh_z,thresh_xy))
+                mask[ia:ib+1]=douglas_peucker.douglas_peucker(dfin[["timestamp","altitude","x","y"]].values[ia:ib+1],dfin.timestamp.values[ia:ib+1],eps=min(thresh_z,thresh_xy))
             # mask = np.logical_or(mask_z,mask_xy)
             # print(mask)
             dfwpts = dfin.where(pd.Series(mask,index=dfin.index)).dropna(subset=["x"]).reset_index()
@@ -397,6 +398,7 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
 
 def scatter_with_number(x,y):
     plt.scatter(x,y)
+    plt.plot(x,y)
     for i in range(len(x)):
         plt.text(x[i],y[i],i+1)
 
