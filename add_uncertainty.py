@@ -60,7 +60,7 @@ def apply_uncertainty(f,ljob):
         f=transfo(f)
     return f
 
-def apply_uncertainty_others(fothers,dothersiwpts,uparams):
+def apply_uncertainty_others(fothers,dothersiwpts,dargs,uparams):
     dixy = dothersiwpts["fxy"]
     uxy = uparams["fxy"]
     ljob_xy = [
@@ -68,13 +68,14 @@ def apply_uncertainty_others(fothers,dothersiwpts,uparams):
     ]
     fothers.fxy = apply_uncertainty(fothers.fxy,ljob_xy)
     uz = uparams["fz"]
+    zargs = dargs["fz"]
     ljob_z = [
-        lambda f: uncertainty.change_vertical_speed(uz[VSPEED],f)
+        lambda f: uncertainty.change_vertical_speed_fwd(uz[VSPEED],zargs[VSPEED]["tmin"],zargs[VSPEED]["tmax"],f,)
     ]
     fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
     return fothers
 
-def apply_uncertainty_deviated(fdeviated,diwpts,uparams):
+def apply_uncertainty_deviated(fdeviated,diwpts,dargs,uparams):
     dixy = diwpts["fxy"]
     uxy = uparams["fxy"]
     ljob_xy = [
@@ -90,12 +91,13 @@ def apply_mask(res,mask):
     return res * mask.align_as(res)
 
 class WithUncertainty:
-    def __init__(self,sitf,dtimes,apply_uncertainty):
+    def __init__(self,sitf,dtimes,dargs,apply_uncertainty):
         self.sitf = sitf.clone()
         self.idtimes = getiwpts(self.sitf,dtimes)
+        self.dargs = dargs
         self.apply_uncertainty = apply_uncertainty
     def add_uncertainty(self,uparams):
-        return self.apply_uncertainty(self.sitf.clone(),self.idtimes,uparams)
+        return self.apply_uncertainty(self.sitf.clone(),self.idtimes,self.dargs,uparams)
     def generate_xy(self,uparams,t):
         return self.add_uncertainty(uparams).generate_xy(t)
     def generate_z(self,uparams,t):
@@ -105,6 +107,12 @@ class WithUncertainty:
 
 def precompute_situation_uncertainty(sit):
     timesofinterest = {k:getattr(sit["deviated"],k) for k in ["tdeviation","tturn","trejoin"]}
+    ztimesofinterest = {
+        "tmin":named.nanamin(sit["others"].t,dim=T),
+        "tmax":named.nanamax(sit["others"].t,dim=T),
+    }
+    print(ztimesofinterest["tmin"].min())
+    print(ztimesofinterest["tmax"].max())
     dtimes = {
         "deviated":{
             "fxy": {
@@ -118,14 +126,24 @@ def precompute_situation_uncertainty(sit):
             "fxy": {
                 LDSPEED: timesofinterest,
             },
-            "fz":{}
+            "fz": {
+                VSPEED: ztimesofinterest,
+            },
+        }
+    }
+    dargs = {
+        "deviated":{},
+        "others":{
+            "fz": {
+                VSPEED: ztimesofinterest,
+            },
         }
     }
     duncertainty = {
         "deviated":apply_uncertainty_deviated,
         "others":apply_uncertainty_others
     }
-    return {k:WithUncertainty(s,dtimes[k],duncertainty[k]) for k,s in sit.items()}
+    return {k:WithUncertainty(s,dtimes[k],dargs[k],duncertainty[k]) for k,s in sit.items()}
 
 def modify(dico,dmodif):
     res = dico.copy()
@@ -134,12 +152,36 @@ def modify(dico,dmodif):
     return res
 
 
+
+def make_t_without0(f,t):
+    t1 = f.duration.align_to(...,WPTS)[...,:1]
+    t = t.align_as(t1)
+    mask = (t == 0.)
+    return mask,named.where(mask,t1,t)
+
+def add_wpt_at_t_robust(f,t):
+    mask,t = make_t_without0(f,t)
+    return f.add_wpt_at_t(t)
+
+def wpts_at_t_robust(f,t):
+    mask,t = make_t_without0(f,t)
+    mask = mask.align_to(...,WPTS)
+    assert(mask.shape[-1]==1)
+    mask = mask[...,0]
+    res = f.wpts_at_t(t).align_as(mask)
+    print(res.names)
+    print(mask.names)
+    return named.where(mask,torch.zeros_like(res),res)
+
+
 def compute_iwpts(f,dtimes):
     stimes=set([t for times in dtimes.values() for t in times.values()])
+    print(dtimes)
     print(len(stimes))
     for t in stimes:
-        f = f.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))
-    d={t:f.wpts_at_t(named.unsqueeze(t,-1,WPTS)) for t in stimes}
+        f = add_wpt_at_t_robust(f,named.unsqueeze(t,-1,WPTS))#f.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))#f.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))
+    # d={t:f.wpts_at_t(named.unsqueeze(t,-1,WPTS)) for t in stimes}
+    d={t:wpts_at_t_robust(f,named.unsqueeze(t,-1,WPTS)) for t in stimes}
     res = {}
     for k,times in dtimes.items():
         res[k]={kk:d[t] for kk,t in times.items()}
@@ -180,7 +222,7 @@ def main():
                 LDSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(LDSPEED),
             },
             "fz":{
-                VSPEED: 1*torch.tensor([0.5,1.5],device=device).reshape(-1).rename(VSPEED),
+                VSPEED: 1*torch.tensor([0.5,1,1.5],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
@@ -191,9 +233,17 @@ def main():
     xy_u = {k:apply_mask(s.generate_xy(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     z_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     diffz = torch.abs(z_u["others"]-z_u["deviated"].align_as(z_u["others"])) < 800
-
-    wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts() for k,s in sit_uncertainty.items()}
-    wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts() for k,s in sit_uncertainty.items()}
+    # def compute_wpts_with_wpts0(f):
+    #     wpts = f.compute_wpts().align_to(...,WPTS,XY)
+    #     xy0 = f.xy0.align_as(wpts)
+    #     s=list(named.broadcastshapes(wpts.shape,xy0.shape))
+    #     s[-2]=1
+    #     xy0 = torch.broadcast_to(xy0,s)
+    #     print(wpts.names,wpts.shape)
+    #     print(xy0.names,xy0.shape)
+    #     return named.cat([xy0,wpts],dim=-2)
+    wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
+    wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
 
     # raise Exception
     if args.wpts == "xy":
@@ -202,16 +252,16 @@ def main():
             print(wpts)
             print(wpts.shape,wpts.names)
             # raise Exception
-            recplot(wpts,scatter_with_number)
+            recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
             plt.show()
     elif args.wpts =="z":
         for k,wpts in wpts_z.items():
             if k=="others":
                 print(k)
-                wpts =wpts[6,:] 
+                wpts =wpts.align_to(OTHERS,...)[45:]
                 print(wpts)
                 #python3 add_uncertainty.py -situation ./situations/38893618_1657871463_1657872229.situation -wpts z
-                recplot(wpts,scatter_with_number)
+                recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
                 plt.show()
     raise Exception
     if args.animate == "xy":

@@ -418,11 +418,11 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
 
 
 
-def scatter_with_number(x,y):
+def scatter_with_number(x,y,istart=1):
     plt.scatter(x,y)
     plt.plot(x,y)
     for i in range(len(x)):
-        plt.text(x[i],y[i],i+1)
+        plt.text(x[i],y[i],i+istart)
 
 
 def plot_xy(xy,wpts):
