@@ -222,7 +222,7 @@ def main():
                 LDSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(LDSPEED),
             },
             "fz":{
-                VSPEED: 1*torch.tensor([0.5,1,1.5],device=device).reshape(-1).rename(VSPEED),
+                VSPEED: 1*torch.tensor([0.5,1],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
@@ -258,7 +258,8 @@ def main():
         for k,wpts in wpts_z.items():
             if k=="others":
                 print(k)
-                wpts =wpts.align_to(OTHERS,...)[45:]
+                # wpts =wpts.align_to(OTHERS,...)[45:]
+                wpts =wpts.align_to(OTHERS,...)[43:44]
                 print(wpts)
                 #python3 add_uncertainty.py -situation ./situations/38893618_1657871463_1657872229.situation -wpts z
                 recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
