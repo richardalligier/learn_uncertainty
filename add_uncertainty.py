@@ -206,23 +206,24 @@ def main():
     args = parser.parse_args()
     # print(args.json)
     sit = load_situation(args.situation)
+    sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
     device="cpu"
 
     uparams = {
         "deviated":{
             "fxy":{
-                DANGLE: torch.tensor([-0.2,0.2],device=device).reshape(-1).rename(DANGLE),
-                DT0: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT0),
-                DT1: 1*torch.tensor([0,0],device=device).reshape(-1).rename(DT1),
-                DSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(DSPEED),
+                DANGLE: torch.tensor([0.],device=device).reshape(-1).rename(DANGLE),
+                DT0: 1*torch.tensor([0],device=device).reshape(-1).rename(DT0),
+                DT1: 1*torch.tensor([0],device=device).reshape(-1).rename(DT1),
+                DSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(DSPEED),
             }
         },
         "others":{
             "fxy":{
-                LDSPEED: 1*torch.tensor([1.,1.],device=device).reshape(-1).rename(LDSPEED),
+                LDSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(LDSPEED),
             },
             "fz":{
-                VSPEED: 1*torch.tensor([0.5,1],device=device).reshape(-1).rename(VSPEED),
+                VSPEED: 1*torch.tensor([0.9,1.],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
@@ -231,8 +232,14 @@ def main():
     t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
     masked_t = {k:s.generate_mask(t,thresh=20) for k,s in sit.items()}
     xy_u = {k:apply_mask(s.generate_xy(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
-    z_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
+    tz_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
+    z_u = {k:apply_mask(s.generate_z(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     diffz = torch.abs(z_u["others"]-z_u["deviated"].align_as(z_u["others"])) < 800
+    print(z_u["others"].names)
+    print(z_u["others"].shape)
+    print(diffz.names)
+    print(diffz.shape)
+    # raise Exception
     # def compute_wpts_with_wpts0(f):
     #     wpts = f.compute_wpts().align_to(...,WPTS,XY)
     #     xy0 = f.xy0.align_as(wpts)
@@ -259,15 +266,21 @@ def main():
             if k=="others":
                 print(k)
                 # wpts =wpts.align_to(OTHERS,...)[45:]
-                wpts =wpts.align_to(OTHERS,...)[43:44]
-                print(wpts)
+                s = slice(45,46)
+                s = slice(28,29)
+                s = slice(29,30)
+                wpts =wpts.align_to(OTHERS,...)#[s]
+                # wpts =wpts.align_to(OTHERS,...)#[43:44]
+                print(wpts.names)
+                print(wpts.shape)
                 #python3 add_uncertainty.py -situation ./situations/38893618_1657871463_1657872229.situation -wpts z
                 recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
                 plt.show()
-    raise Exception
+    # raise Exception
     if args.animate == "xy":
         plotanimate([xy_u["deviated"],apply_mask(xy_u["others"],diffz/diffz),apply_mask(xy_u["others"],(~diffz)/(~diffz))],s=4)
     elif args.animate =="z":
-        plotanimate(list(z_u.values()),s=4,margin=10,equal=False)
+        plotanimate(list(tz_u.values()),s=4,margin=10,equal=False)
 if __name__ == "__main__":
     main()
+#python3 add_uncertainty.py -situation ./situations/38930310_1657885467_1657885501.situation -wpts z

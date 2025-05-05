@@ -26,11 +26,20 @@ def main():
     parser.add_argument('-situationsfolder')
     parser.add_argument('-dsituation')
     args = parser.parse_args()
-    lfname = [f"{args.situationsfolder}/{fname}" for fname in os.listdir(args.situationsfolder)]
+    lfname=[]
+    for root, dirs, files in os.walk(args.situationsfolder, topdown=False):
+        for name in files:
+            fname = os.path.join(root, name)
+            lfname.append(fname)
     lsit = [load_situation(fname) for fname in lfname]
     print(f"{len(lsit)=}")
     dlsit = partition(lambda sit: sit["others"].t.shape[sit["others"].t.names.index(OTHERS)],lsit)
+    print(sorted([(k,len(v)) for k,v in dlsit.items()]))
+    print(dlsit[355][0]["deviated"].fid)
+    print(dlsit[355][0]["deviated"].tdeviation)
+    print(dlsit[355][0]["others"].fid)
     for k,v in dlsit.items():
+        print(k)
         dlsit[k]=merge(v)
     print(dlsit)
     save_situation(dlsit,args.dsituation)

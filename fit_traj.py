@@ -13,6 +13,8 @@ import datetime
 import geosphere
 import operator as op
 import matplotlib.animation as animation
+from pathlib import Path
+import os
 
 
 #KIM_PARAMETERS = {"angle_precision":0.5,"min_distance":200.}
@@ -208,6 +210,7 @@ def t_from_df(df,device):
 
 def initialize_gen_xyz(df,device,v):
     trajreal = trajreal_from_df(df,device,v)
+    # print(df.timestamp)
     t_zero = df.timestamp.values[0]
     t = t_from_df(df,device)
     t = t.align_as(trajreal)
@@ -342,6 +345,10 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
         lt = []
         lfid = []
         for fid,dfin in df.groupby("flight_id"):
+            if dfin.shape[0]==1:
+                continue
+            if dfin.shape[0]==0:
+                raise Exception
             lfid.append(fid)
             lttoinclude = sorted([t_deviation,t_turn,t_rejoin])
             vitoinclude = [np.where(dfin.timestamp.values==t)[0] for t in lttoinclude]
@@ -368,6 +375,7 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
             # dfwpts = dfin.where(pd.Series(mask,index=dfin.index)).dropna(subset=["x"]).reset_index()
             # # assert (dfwpts.timestamp.values[0]==dfin.timestamp.values[0])
             # fxy,fz = initialize(dfwpts,device)
+            # print(dfin.shape,fid)
             fxy = initialize_xy(dfin.where(pd.Series(mask_xy,index=dfin.index)).dropna(subset=["x"]).reset_index(),device)
             fz = initialize_z(dfin.where(pd.Series(mask_z,index=dfin.index)).dropna(subset=["x"]).reset_index(),device)
             fxy = fxy.shift_xy0(float(dfin.timestamp.values[0]))
@@ -494,6 +502,7 @@ def plot(f,t,xory):
 
 
 def save_situation(o,fname):
+    Path(os.path.dirname(fname)).mkdir(parents=True, exist_ok=True)
     torch.save(serialize(o),fname)
 
 def load_situation(fname):
@@ -509,6 +518,9 @@ def main():
     args = parser.parse_args()
     print(args.json)
     sit = read_json.Situation.from_json(args.json)
+    plt.scatter(sit.trajectories.x,sit.trajectories.y)
+    plt.show()
+    raise Exception
     device = "cpu"
     fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL*0.99,thresh_z=THRESH_Z_MODEL * 0.99)
     save_situation({"deviated":fdeviated,"others":fothers},args.situation)

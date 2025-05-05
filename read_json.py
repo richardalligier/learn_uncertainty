@@ -88,6 +88,9 @@ class  Situation:
             dfpoints = Traffic(dfpoints).filter(filter=FilterCstLatLon(),strategy=nointerpolate).eval(max_workers=1).data.dropna(subset=["latitude"])
             ltrajs.append(dfpoints)
         trajectories = pd.concat(ltrajs,ignore_index=True)
+        # print(trajectories.query("flight_id==34768950").shape)
+        # # print(list(trajectories))
+        # raise Exception
         trajectories = trajectories.rename(columns={"track_angle":"track"})
         trajectories = Traffic(trajectories).compute_xy(projection=PROJ).data
         # projection = Projection(trajectories)
