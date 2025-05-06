@@ -70,7 +70,7 @@ def apply_uncertainty_others(fothers,dothersiwpts,dargs,uparams):
     uz = uparams["fz"]
     zargs = dargs["fz"]
     ljob_z = [
-        lambda f: uncertainty.change_vertical_speed_fwd(uz[VSPEED],zargs[VSPEED]["tmin"],zargs[VSPEED]["tmax"],f,)
+        lambda f: uncertainty.change_vertical_speed_new_fwd(uz[VSPEED],zargs[VSPEED]["tmin"],zargs[VSPEED]["tmax"],f,)
     ]
     fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
     return fothers
@@ -223,7 +223,7 @@ def main():
                 LDSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(LDSPEED),
             },
             "fz":{
-                VSPEED: 1*torch.tensor([0.9,1.],device=device).reshape(-1).rename(VSPEED),
+                VSPEED: 1*torch.tensor([0.5,1.],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
