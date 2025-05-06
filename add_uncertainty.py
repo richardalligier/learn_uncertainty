@@ -1,7 +1,7 @@
 import read_json
 import numpy as np
 import torch
-from torchtraj.utils import T, XY,WPTS
+from torchtraj.utils import T, XY,WPTS, apply_mask
 from torchtraj import flights, named, uncertainty
 from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict,plot,recplot,scatter_with_number
 import pandas as pd
@@ -87,8 +87,8 @@ def apply_uncertainty_deviated(fdeviated,diwpts,dargs,uparams):
     fdeviated.fxy = apply_uncertainty(fdeviated.fxy,ljob_xy)
     return fdeviated
 
-def apply_mask(res,mask):
-    return res * mask.align_as(res)
+# def apply_mask(res,mask):
+#     return res * mask.align_as(res)
 
 class WithUncertainty:
     def __init__(self,sitf,dtimes,dargs,apply_uncertainty):
