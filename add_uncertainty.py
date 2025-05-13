@@ -169,15 +169,15 @@ def wpts_at_t_robust(f,t):
     assert(mask.shape[-1]==1)
     mask = mask[...,0]
     res = f.wpts_at_t(t).align_as(mask)
-    print(res.names)
-    print(mask.names)
+    # print(res.names)
+    # print(mask.names)
     return named.where(mask,torch.zeros_like(res),res)
 
 
 def compute_iwpts(f,dtimes):
     stimes=set([t for times in dtimes.values() for t in times.values()])
-    print(dtimes)
-    print(len(stimes))
+    # print(dtimes)
+    # print(len(stimes))
     for t in stimes:
         f = add_wpt_at_t_robust(f,named.unsqueeze(t,-1,WPTS))#f.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))#f.add_wpt_at_t(named.unsqueeze(t,-1,WPTS))
     # d={t:f.wpts_at_t(named.unsqueeze(t,-1,WPTS)) for t in stimes}
@@ -202,7 +202,7 @@ def generate_sitothers_test_vz_(sitothers):
     vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/10#000000
     # m = ~m
     # vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/200
-    print(vz)
+    # print(vz)
     vt = torch.ones_like(sitothers.fz.v)
     vxy = named.stack([vt,vz],XY).align_to(...,XY)
     v = torch.hypot(vxy[...,0],vxy[...,1])
@@ -219,10 +219,10 @@ def main():
     args = parser.parse_args()
     # print(args.json)
     sit = load_situation(args.situation)
-    sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
-    sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
+    sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[236:247])
+    # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
+    # sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
     device="cpu"
-
     uparams = {
         "deviated":{
             "fxy":{
@@ -249,10 +249,10 @@ def main():
     tz_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     z_u = {k:apply_mask(s.generate_z(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     diffz = torch.abs(z_u["others"]-z_u["deviated"].align_as(z_u["others"])) < 800
-    print(z_u["others"].names)
-    print(z_u["others"].shape)
-    print(diffz.names)
-    print(diffz.shape)
+    # print(z_u["others"].names)
+    # print(z_u["others"].shape)
+    # print(diffz.names)
+    # print(diffz.shape)
     # raise Exception
     # def compute_wpts_with_wpts0(f):
     #     wpts = f.compute_wpts().align_to(...,WPTS,XY)
@@ -265,8 +265,6 @@ def main():
     #     return named.cat([xy0,wpts],dim=-2)
     wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
     wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
-
-    # raise Exception
     if args.wpts == "xy":
         for k,wpts in wpts_xy.items():
             print(k)
@@ -285,8 +283,8 @@ def main():
                 s = slice(29,30)
                 wpts =wpts.align_to(OTHERS,...)#[s]
                 # wpts =wpts.align_to(OTHERS,...)#[43:44]
-                print(wpts.names)
-                print(wpts.shape)
+                # print(wpts.names)
+                # print(wpts.shape)
                 #python3 add_uncertainty.py -situation ./situations/38893618_1657871463_1657872229.situation -wpts z
                 recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
                 plt.show()

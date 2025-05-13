@@ -116,6 +116,18 @@ class SituationOthers:
         assert(newaxis not in tobs.names)
         diff = op.sub(*named.align_common(t,tobs.rename(**{T:newaxis}))).align_to(...,newaxis)
         mask = (diff.abs().min(axis=-1).values < thresh)
+        assert(tobs.names[-1]==T)
+        tmin = torch.min(tobs,dim=-1).values
+        tmax = torch.max(tobs,dim=-1).values
+        # print(tobs)
+        # print(tmin)
+        # print(tmax)
+        # print(t)
+        mrange = torch.logical_and(op.le(*named.align_common(tmin,t)),
+                                   op.le(*named.align_common(t,tmax)))
+        # print(op.lt(*named.align_commontmin<=t)
+        mask = torch.logical_and(mrange,mask)
+        # raise Exception
         return mask / mask
 
     def generate_xy(self,t):
