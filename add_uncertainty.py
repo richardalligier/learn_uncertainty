@@ -70,7 +70,7 @@ def apply_uncertainty_others(fothers,dothersiwpts,dargs,uparams):
     uz = uparams["fz"]
     zargs = dargs["fz"]
     ljob_z = [
-        lambda f: uncertainty.change_vertical_speed_new_fwd(uz[VSPEED],zargs[VSPEED]["tmin"],zargs[VSPEED]["tmax"],f,)
+        lambda f:uncertainty.change_vertical_speed_fwd(uz[VSPEED],zargs[VSPEED]["tmin"],zargs[VSPEED]["tmax"],f,)
     ]
     fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
     return fothers
@@ -111,8 +111,8 @@ def precompute_situation_uncertainty(sit):
         "tmin":named.nanamin(sit["others"].t,dim=T),
         "tmax":named.nanamax(sit["others"].t,dim=T),
     }
-    print(ztimesofinterest["tmin"].min())
-    print(ztimesofinterest["tmax"].max())
+    # print(ztimesofinterest["tmin"].min())
+    # print(ztimesofinterest["tmax"].max())
     dtimes = {
         "deviated":{
             "fxy": {
@@ -195,6 +195,19 @@ def getiwpts(sitf,dtimes):
         setattr(sitf,k,f)
     return res
 
+def generate_sitothers_test_vz_(sitothers):
+    torch.manual_seed(44)
+    vz = torch.randn_like(sitothers.fz.v)*3
+    m = torch.abs(vz) < 200/60
+    vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/10#000000
+    # m = ~m
+    # vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/200
+    print(vz)
+    vt = torch.ones_like(sitothers.fz.v)
+    vxy = named.stack([vt,vz],XY).align_to(...,XY)
+    v = torch.hypot(vxy[...,0],vxy[...,1])
+    theta = torch.atan2(vxy[...,1],vxy[...,0])
+    return v,theta
 def main():
     import argparse
     parser = argparse.ArgumentParser(
@@ -207,6 +220,7 @@ def main():
     # print(args.json)
     sit = load_situation(args.situation)
     sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
+    sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
     device="cpu"
 
     uparams = {
@@ -223,7 +237,7 @@ def main():
                 LDSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(LDSPEED),
             },
             "fz":{
-                VSPEED: 1*torch.tensor([0.5,1.],device=device).reshape(-1).rename(VSPEED),
+                VSPEED: 1*torch.tensor([2,1.,0.7,0.5],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
