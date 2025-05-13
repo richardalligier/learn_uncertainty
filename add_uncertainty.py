@@ -208,6 +208,23 @@ def generate_sitothers_test_vz_(sitothers):
     v = torch.hypot(vxy[...,0],vxy[...,1])
     theta = torch.atan2(vxy[...,1],vxy[...,0])
     return v,theta
+
+def minmax(a,dimsInSet):
+    if a.names
+    amax = named.nanamax(a,dimsInSet)
+    amin = named.nanamin(a,dimsInSet)
+    return amin,amax
+def distz(a,b,dimsInSet):
+    amax = named.nanamax(a,dimsInSet)
+    amin = named.nanamin(a,dimsInSet)
+    bmax = named.nanamax(b,dimsInSet)
+    bmin = named.nanamin(b,dimsInSet)
+    r1=amax-bmin
+    r2=bmax-amin
+    print(r1)
+    print(r2)
+    raise Exception
+    
 def main():
     import argparse
     parser = argparse.ArgumentParser(
@@ -249,6 +266,8 @@ def main():
     tz_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     z_u = {k:apply_mask(s.generate_z(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
     diffz = torch.abs(z_u["others"]-z_u["deviated"].align_as(z_u["others"])) < 800
+    distz(z_u["others"],z_u["deviated"],[VSPEED])
+    
     # print(z_u["others"].names)
     # print(z_u["others"].shape)
     # print(diffz.names)
