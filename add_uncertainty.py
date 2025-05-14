@@ -11,6 +11,7 @@ import datetime
 import geosphere
 import operator as op
 import matplotlib.animation as animation
+from torchtraj.qhull import QhullDist
 
 DANGLE = "dangle"
 MAN_WPTS = "man_wpts"
@@ -43,7 +44,7 @@ def plotanimate(lxy,s=1.5,margin=20.,equal=True):
         # print(pos)
         # raise Exception
         for scat,xy in zip(scats,lxy):
-            pos = xy[...,i:i+40:4,:].rename(None).flatten(end_dim=-2).numpy()
+            pos = xy.cpu()[...,i:i+40:4,:].rename(None).flatten(end_dim=-2).numpy()
             scat.set_offsets(pos)
         return scats
     ani = animation.FuncAnimation(fig, func=animate, init_func=init, frames=lxy[0].shape[-2],
@@ -98,12 +99,12 @@ class WithUncertainty:
         self.apply_uncertainty = apply_uncertainty
     def add_uncertainty(self,uparams):
         return self.apply_uncertainty(self.sitf.clone(),self.idtimes,self.dargs,uparams)
-    def generate_xy(self,uparams,t):
-        return self.add_uncertainty(uparams).generate_xy(t)
-    def generate_z(self,uparams,t):
-        return self.sitf.generate_z(t)
-    def generate_tz(self,uparams,t):
-        return self.sitf.generate_tz(t)
+    # def generate_xy(self,uparams,t):
+    #     return self.add_uncertainty(uparams).generate_xy(t)
+    # def generate_z(self,uparams,t):
+    #     return self.add_uncertainty(uparams).generate_z(t)
+    # def generate_tz(self,uparams,t):
+    #     return self.sitf.generate_tz(t)
 
 def precompute_situation_uncertainty(sit):
     timesofinterest = {k:getattr(sit["deviated"],k) for k in ["tdeviation","tturn","trejoin"]}
@@ -210,21 +211,39 @@ def generate_sitothers_test_vz_(sitothers):
     return v,theta
 
 def minmax(a,dimsInSet):
-    if a.names
-    amax = named.nanamax(a,dimsInSet)
-    amin = named.nanamin(a,dimsInSet)
-    return amin,amax
-def distz(a,b,dimsInSet):
-    amax = named.nanamax(a,dimsInSet)
-    amin = named.nanamin(a,dimsInSet)
-    bmax = named.nanamax(b,dimsInSet)
-    bmin = named.nanamin(b,dimsInSet)
-    r1=amax-bmin
-    r2=bmax-amin
-    print(r1)
-    print(r2)
-    raise Exception
-    
+    if len(dimsInSet) == 0.:
+        return a,a
+    else:
+        amax = named.nanamax(a,dimsInSet)
+        amin = named.nanamin(a,dimsInSet)
+        return amin,amax
+
+def distz(amin,amax,bmin,bmax):
+    r1 = amin-bmax
+    r2 = bmin-amax
+    return named.maximum(r1,r2)
+
+
+class Add_uncertainty:
+    def __init__(self,sit,step,thresh_thole=20,dist_discretize=180):
+        self.t = sit["deviated"].generate_trange_conflict(step=step)
+        self.masked_t = {k:s.generate_mask(self.t,thresh=20) for k,s in sit.items()}
+        self.sit_uncertainty = precompute_situation_uncertainty(sit)
+        self.qhulldist = QhullDist(n=dist_discretize,device=self.t.device)
+    def compute_tz(self,uparams):
+        f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
+        return {k:apply_mask(s.generate_tz(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
+    def compute_dist(self,uparams):
+        f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
+        xy_u = {k:apply_mask(s.generate_xy(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
+        z_u = {k:apply_mask(s.generate_z(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
+        assert("fz" not in list(uparams["deviated"]))
+        dist_z= distz(*minmax(z_u["others"],list(uparams["others"]["fz"].keys())),
+                  z_u["deviated"],z_u["deviated"])
+        names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
+        dist_xy = self.qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
+        return dist_xy,dist_z,xy_u,z_u
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(
@@ -235,11 +254,12 @@ def main():
     parser.add_argument('-wpts',default=None)
     args = parser.parse_args()
     # print(args.json)
+    device="cuda"
     sit = load_situation(args.situation)
-    sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[236:247])
+    sit = {k:s.to(device) for k,s in sit.items()}
+    # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...))
     # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
     # sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
-    device="cpu"
     uparams = {
         "deviated":{
             "fxy":{
@@ -254,37 +274,37 @@ def main():
                 LDSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(LDSPEED),
             },
             "fz":{
-                VSPEED: 1*torch.tensor([2,1.,0.7,0.5],device=device).reshape(-1).rename(VSPEED),
+                VSPEED: 1*torch.tensor([1.,],device=device).reshape(-1).rename(VSPEED),
             }
         }
     }
-    sit_uncertainty = precompute_situation_uncertainty(sit)
-    max_duration = max(s.t.max() for s in sit.values())
-    t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
-    masked_t = {k:s.generate_mask(t,thresh=20) for k,s in sit.items()}
-    xy_u = {k:apply_mask(s.generate_xy(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
-    tz_u = {k:apply_mask(s.generate_tz(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
-    z_u = {k:apply_mask(s.generate_z(uparams[k],t),mask=masked_t[k])for k,s in sit_uncertainty.items()}
-    diffz = torch.abs(z_u["others"]-z_u["deviated"].align_as(z_u["others"])) < 800
-    distz(z_u["others"],z_u["deviated"],[VSPEED])
-    
-    # print(z_u["others"].names)
-    # print(z_u["others"].shape)
-    # print(diffz.names)
-    # print(diffz.shape)
-    # raise Exception
-    # def compute_wpts_with_wpts0(f):
-    #     wpts = f.compute_wpts().align_to(...,WPTS,XY)
-    #     xy0 = f.xy0.align_as(wpts)
-    #     s=list(named.broadcastshapes(wpts.shape,xy0.shape))
-    #     s[-2]=1
-    #     xy0 = torch.broadcast_to(xy0,s)
-    #     print(wpts.names,wpts.shape)
-    #     print(xy0.names,xy0.shape)
-    #     return named.cat([xy0,wpts],dim=-2)
-    wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
-    wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
+    # max_duration = max(s.t.max() for s in sit.values())
+    # # t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
+    # t = sit["deviated"].generate_trange_conflict(step=10)
+    # # print(t)
+    # # raise Exception
+    # masked_t = {k:s.generate_mask(t,thresh=20) for k,s in sit.items()}
+    # sit_uncertainty = precompute_situation_uncertainty(sit)
+    # qhulldist = QhullDist(device,n=180)
+
+    # f_u = {k:s.add_uncertainty(uparams[k]) for k,s in sit_uncertainty.items()}
+    # xy_u = {k:apply_mask(s.generate_xy(t),mask=masked_t[k])for k,s in f_u.items()}
+    # tz_u = {k:apply_mask(s.generate_tz(t),mask=masked_t[k])for k,s in f_u.items()}
+    # z_u = {k:apply_mask(s.generate_z(t),mask=masked_t[k])for k,s in f_u.items()}
+    # diffz = distz(*minmax(z_u["others"],list(uparams["others"]["fz"].keys())),
+    #               z_u["deviated"],z_u["deviated"]
+    #               )
+    # names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
+    # print(names_xy)
+    # dist_xy = qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
+    add = Add_uncertainty(sit,step=2)
+    dist_xy,dist_z,xy_u,z_u = add.compute_dist(uparams)
+    tz_u = add.compute_tz(uparams)
+    conflict_z = dist_z < 800
+    conflict_xy = dist_xy < 8*1852
+
     if args.wpts == "xy":
+        wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
         for k,wpts in wpts_xy.items():
             print(k)
             print(wpts)
@@ -293,6 +313,7 @@ def main():
             recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
             plt.show()
     elif args.wpts =="z":
+        wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
         for k,wpts in wpts_z.items():
             if k=="others":
                 print(k)
@@ -309,7 +330,13 @@ def main():
                 plt.show()
     # raise Exception
     if args.animate == "xy":
-        plotanimate([xy_u["deviated"],apply_mask(xy_u["others"],diffz/diffz),apply_mask(xy_u["others"],(~diffz)/(~diffz))],s=4)
+        conflict = torch.logical_and(conflict_z,conflict_xy)
+        plotanimate([xy_u["deviated"],
+                     # apply_mask(xy_u["others"],conflict_z/conflict_z),
+                     apply_mask(xy_u["others"],(~conflict)/(~conflict)),
+                     apply_mask(xy_u["others"],(~conflict_z)/(~conflict_z)),
+                     apply_mask(xy_u["others"],conflict/conflict),
+                     ],s=4)
     elif args.animate =="z":
         plotanimate(list(tz_u.values()),s=4,margin=10,equal=False)
 if __name__ == "__main__":

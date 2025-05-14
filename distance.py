@@ -14,7 +14,7 @@ DSPEED = "dspeed"
 LDSPEED = "ldspeed"
 PARAMS = "params"
 
-#DEVICE = "cpu"
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def generate_distance_function(dsituation,step):
