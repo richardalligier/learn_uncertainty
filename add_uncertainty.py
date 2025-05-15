@@ -12,16 +12,9 @@ import geosphere
 import operator as op
 import matplotlib.animation as animation
 from torchtraj.qhull import QhullDist
+VALUESTOTEST = "valuestotest"
 
-DANGLE = "dangle"
-MAN_WPTS = "man_wpts"
-DT0 = "dt0"
-DT1 = "dt1"
-DSPEED = "dspeed"
-LDSPEED = "ldspeed"
-VSPEED = "vspeed"
-
-def plotanimate(lxy,s=1.5,margin=20.,equal=True):
+def plotanimate(lxy,xlabel,ylabel,s=1.5,margin=20.,equal=True):
     fig,ax = plt.subplots() # initialise la figure
     scats = tuple(ax.scatter([],[],s=s) for _ in lxy)
     xmin = min([named.nanmin(xy[...,0].rename(None)) for xy in lxy]).item()-margin
@@ -49,7 +42,8 @@ def plotanimate(lxy,s=1.5,margin=20.,equal=True):
         return scats
     ani = animation.FuncAnimation(fig, func=animate, init_func=init, frames=lxy[0].shape[-2],
                               interval=1, blit=True, repeat=True)
-
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
     plt.show()
 
 
@@ -61,90 +55,9 @@ def apply_uncertainty(f,ljob):
         f=transfo(f)
     return f
 
-def apply_uncertainty_others(fothers,dothersiwpts,dargs,uparams):
-    dixy = dothersiwpts["fxy"]
-    uxy = uparams["fxy"]
-    ljob_xy = [
-        lambda f: uncertainty.change_longitudinal_speed(uxy[LDSPEED],dixy[LDSPEED]["tdeviation"],dixy[LDSPEED]["trejoin"],f)
-    ]
-    fothers.fxy = apply_uncertainty(fothers.fxy,ljob_xy)
-    uz = uparams["fz"]
-    zargs = dargs["fz"]
-    ljob_z = [
-        lambda f:uncertainty.change_vertical_speed_fwd(uz[VSPEED],zargs[VSPEED]["tmin"],zargs[VSPEED]["tmax"],f,)
-    ]
-    fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
-    return fothers
-
-def apply_uncertainty_deviated(fdeviated,diwpts,dargs,uparams):
-    dixy = diwpts["fxy"]
-    uxy = uparams["fxy"]
-    ljob_xy = [
-        lambda f:uncertainty.addangle(uxy[DANGLE],dixy[DANGLE]["tdeviation"],dixy[DANGLE]["tturn"],dixy[DANGLE]["trejoin"],f,beacon=fdeviated.beacon),
-        lambda f:uncertainty.adddt_rotate(uxy[DT0],dixy[DT0]["tdeviation"],dixy[DT0]["tturn"],dixy[DT0]["trejoin"],f,beacon=fdeviated.beacon),
-        lambda f:uncertainty.adddt_rotate(uxy[DT1],dixy[DT1]["tturn"],dixy[DT1]["tturn"],dixy[DT1]["trejoin"],f,beacon=fdeviated.beacon),
-        lambda f:uncertainty.changespeed_rotate(uxy[DSPEED],dixy[DSPEED]["tdeviation"],dixy[DSPEED]["tturn"],dixy[DSPEED]["trejoin"],f,beacon=fdeviated.beacon),
-    ]
-    fdeviated.fxy = apply_uncertainty(fdeviated.fxy,ljob_xy)
-    return fdeviated
 
 # def apply_mask(res,mask):
 #     return res * mask.align_as(res)
-
-class WithUncertainty:
-    def __init__(self,sitf,dtimes,dargs,apply_uncertainty):
-        self.sitf = sitf.clone()
-        self.idtimes = getiwpts(self.sitf,dtimes)
-        self.dargs = dargs
-        self.apply_uncertainty = apply_uncertainty
-    def add_uncertainty(self,uparams):
-        return self.apply_uncertainty(self.sitf.clone(),self.idtimes,self.dargs,uparams)
-    # def generate_xy(self,uparams,t):
-    #     return self.add_uncertainty(uparams).generate_xy(t)
-    # def generate_z(self,uparams,t):
-    #     return self.add_uncertainty(uparams).generate_z(t)
-    # def generate_tz(self,uparams,t):
-    #     return self.sitf.generate_tz(t)
-
-def precompute_situation_uncertainty(sit):
-    timesofinterest = {k:getattr(sit["deviated"],k) for k in ["tdeviation","tturn","trejoin"]}
-    ztimesofinterest = {
-        "tmin":named.nanamin(sit["others"].t,dim=T),
-        "tmax":named.nanamax(sit["others"].t,dim=T),
-    }
-    # print(ztimesofinterest["tmin"].min())
-    # print(ztimesofinterest["tmax"].max())
-    dtimes = {
-        "deviated":{
-            "fxy": {
-                DANGLE: timesofinterest,
-                DT0: modify(timesofinterest,{"tdeviation":lambda x:x-1}),
-                DT1: timesofinterest,
-                DSPEED: timesofinterest,
-            }
-        },
-        "others":{
-            "fxy": {
-                LDSPEED: timesofinterest,
-            },
-            "fz": {
-                VSPEED: ztimesofinterest,
-            },
-        }
-    }
-    dargs = {
-        "deviated":{},
-        "others":{
-            "fz": {
-                VSPEED: ztimesofinterest,
-            },
-        }
-    }
-    duncertainty = {
-        "deviated":apply_uncertainty_deviated,
-        "others":apply_uncertainty_others
-    }
-    return {k:WithUncertainty(s,dtimes[k],dargs[k],duncertainty[k]) for k,s in sit.items()}
 
 def modify(dico,dmodif):
     res = dico.copy()
@@ -224,25 +137,155 @@ def distz(amin,amax,bmin,bmax):
     return named.maximum(r1,r2)
 
 
+
+
+
+
+
+
+
+
+
+class WithUncertainty:
+    def __init__(self,sitf,dtimes,dargs,apply_uncertainty):
+        self.sitf = sitf.clone()
+        self.idtimes = getiwpts(self.sitf,dtimes)
+        self.dargs = dargs
+        self.apply_uncertainty = apply_uncertainty
+    def add_uncertainty(self,uparams):
+        return self.apply_uncertainty(self.sitf.clone(),self.idtimes,self.dargs,uparams)
+    # def generate_xy(self,uparams,t):
+    #     return self.add_uncertainty(uparams).generate_xy(t)
+    # def generate_z(self,uparams,t):
+    #     return self.add_uncertainty(uparams).generate_z(t)
+    # def generate_tz(self,uparams,t):
+    #     return self.sitf.generate_tz(t)
+
+class Uncertainty_model:
+    DANGLE = "dangle"
+    MAN_WPTS = "man_wpts"
+    DT0 = "dt0"
+    DT1 = "dt1"
+    DSPEED = "dspeed"
+    LDSPEED = "ldspeed"
+    VSPEED = "vspeed"
+    @classmethod
+    def apply_uncertainty_others(cls,fothers,dothersiwpts,dargs,uparams):
+        dixy = dothersiwpts["fxy"]
+        uxy = uparams["fxy"]
+        ljob_xy = [
+            lambda f: uncertainty.change_longitudinal_speed(uxy[cls.LDSPEED],dixy[cls.LDSPEED]["tdeviation"],dixy[cls.LDSPEED]["trejoin"],f)
+        ]
+        fothers.fxy = apply_uncertainty(fothers.fxy,ljob_xy)
+        uz = uparams["fz"]
+        zargs = dargs["fz"]
+        ljob_z = [
+            lambda f:uncertainty.change_vertical_speed_fwd(uz[cls.VSPEED],zargs[cls.VSPEED]["tmin"],zargs[cls.VSPEED]["tmax"],f,)
+        ]
+        fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
+        return fothers
+    @classmethod
+    def apply_uncertainty_deviated(cls,fdeviated,diwpts,dargs,uparams):
+        dixy = diwpts["fxy"]
+        uxy = uparams["fxy"]
+        ljob_xy = [
+            lambda f:uncertainty.addangle(uxy[cls.DANGLE],dixy[cls.DANGLE]["tdeviation"],dixy[cls.DANGLE]["tturn"],dixy[cls.DANGLE]["trejoin"],f,beacon=fdeviated.beacon),
+            lambda f:uncertainty.adddt_rotate(uxy[cls.DT0],dixy[cls.DT0]["tdeviation"],dixy[cls.DT0]["tturn"],dixy[cls.DT0]["trejoin"],f,beacon=fdeviated.beacon),
+            lambda f:uncertainty.adddt_rotate(uxy[cls.DT1],dixy[cls.DT1]["tturn"],dixy[cls.DT1]["tturn"],dixy[cls.DT1]["trejoin"],f,beacon=fdeviated.beacon),
+            lambda f:uncertainty.changespeed_rotate(uxy[cls.DSPEED],dixy[cls.DSPEED]["tdeviation"],dixy[cls.DSPEED]["tturn"],dixy[cls.DSPEED]["trejoin"],f,beacon=fdeviated.beacon),
+        ]
+        fdeviated.fxy = apply_uncertainty(fdeviated.fxy,ljob_xy)
+        return fdeviated
+
+    @classmethod
+    def precompute_situation_uncertainty(cls,sit):
+        timesofinterest = {k:getattr(sit["deviated"],k) for k in ["tdeviation","tturn","trejoin"]}
+        ztimesofinterest = {
+            "tmin":named.nanamin(sit["others"].t,dim=T),
+            "tmax":named.nanamax(sit["others"].t,dim=T),
+        }
+        # print(ztimesofinterest["tmin"].min())
+        # print(ztimesofinterest["tmax"].max())
+        dtimes = {
+        "deviated":{
+            "fxy": {
+                cls.DANGLE: timesofinterest,
+                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x-1}),
+                cls.DT1: timesofinterest,
+                cls.DSPEED: timesofinterest,
+            }
+        },
+        "others":{
+            "fxy": {
+                cls.LDSPEED: timesofinterest,
+            },
+            "fz": {
+                cls.VSPEED: ztimesofinterest,
+            },
+        }
+        }
+        dargs = {
+            "deviated":{},
+            "others":{
+                "fz": {
+                    cls.VSPEED: ztimesofinterest,
+                },
+            }
+        }
+        duncertainty = {
+            "deviated":cls.apply_uncertainty_deviated,
+            "others":cls.apply_uncertainty_others
+        }
+        return {k:WithUncertainty(s,dtimes[k],dargs[k],duncertainty[k]) for k,s in sit.items()}
+    @classmethod
+    def build_uparams(cls,dangle,dt0,dt1,dspeed,ldspeed,vspeed):
+        # print(dangle.names,VALUESTOTEST)
+        # raise Exception
+        uparams = {
+            "deviated":{
+                "fxy":{
+                    cls.DANGLE: dangle.rename(**{VALUESTOTEST:cls.DANGLE}),
+                    cls.DT0: dt0.rename(**{VALUESTOTEST:cls.DT0}),
+                    cls.DT1: dt1.rename(**{VALUESTOTEST:cls.DT1}),
+                    cls.DSPEED: dspeed.rename(**{VALUESTOTEST:cls.DSPEED}),
+            }
+            },
+            "others":{
+                "fxy":{
+                    cls.LDSPEED: ldspeed.rename(**{VALUESTOTEST:cls.LDSPEED}),
+                },
+                "fz":{
+                    cls.VSPEED: vspeed.rename(**{VALUESTOTEST:cls.VSPEED}),
+                }
+            }
+        }
+        return uparams
+
+
 class Add_uncertainty:
-    def __init__(self,sit,step,thresh_thole=20,dist_discretize=180):
+    def __init__(self,sit,step,thresh_thole=20,dist_discretize=180,umodel=None):
+        self.umodel = Uncertainty_model() if umodel is None else umodel
         self.t = sit["deviated"].generate_trange_conflict(step=step)
         self.masked_t = {k:s.generate_mask(self.t,thresh=20) for k,s in sit.items()}
-        self.sit_uncertainty = precompute_situation_uncertainty(sit)
+        self.sit_uncertainty = self.umodel.precompute_situation_uncertainty(sit)
         self.qhulldist = QhullDist(n=dist_discretize,device=self.t.device)
-    def compute_tz(self,uparams):
+    def compute_tz(self,duparams):
+        uparams = self.umodel.build_uparams(**duparams)
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         return {k:apply_mask(s.generate_tz(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
-    def compute_dist(self,uparams):
+
+    def compute_dist(self,duparams):
+        uparams = self.umodel.build_uparams(**duparams)
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         xy_u = {k:apply_mask(s.generate_xy(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
         z_u = {k:apply_mask(s.generate_z(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
         assert("fz" not in list(uparams["deviated"]))
         dist_z= distz(*minmax(z_u["others"],list(uparams["others"]["fz"].keys())),
-                  z_u["deviated"],z_u["deviated"])
+                      z_u["deviated"],z_u["deviated"])
         names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
         dist_xy = self.qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
         return dist_xy,dist_z,xy_u,z_u
+
 
 def main():
     import argparse
@@ -260,24 +303,16 @@ def main():
     # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...))
     # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
     # sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
+    add = Add_uncertainty(sit,step=2)
     uparams = {
-        "deviated":{
-            "fxy":{
-                DANGLE: torch.tensor([0.],device=device).reshape(-1).rename(DANGLE),
-                DT0: 1*torch.tensor([0],device=device).reshape(-1).rename(DT0),
-                DT1: 1*torch.tensor([0],device=device).reshape(-1).rename(DT1),
-                DSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(DSPEED),
-            }
-        },
-        "others":{
-            "fxy":{
-                LDSPEED: 1*torch.tensor([1.],device=device).reshape(-1).rename(LDSPEED),
-            },
-            "fz":{
-                VSPEED: 1*torch.tensor([1.,],device=device).reshape(-1).rename(VSPEED),
-            }
-        }
+        "dangle": torch.tensor([0.],device=device).rename(VALUESTOTEST),
+        "dt0": torch.tensor([0],device=device).rename(VALUESTOTEST),
+        "dt1": torch.tensor([0],device=device).rename(VALUESTOTEST),
+        "dspeed": torch.tensor([1.],device=device).rename(VALUESTOTEST),
+        "ldspeed": torch.tensor([1.],device=device).rename(VALUESTOTEST),
+        "vspeed": torch.tensor([1.],device=device).rename(VALUESTOTEST),
     }
+
     # max_duration = max(s.t.max() for s in sit.values())
     # # t = torch.arange(start=0.,end=max_duration,step=1,device=device).rename(T)
     # t = sit["deviated"].generate_trange_conflict(step=10)
@@ -297,7 +332,6 @@ def main():
     # names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
     # print(names_xy)
     # dist_xy = qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
-    add = Add_uncertainty(sit,step=2)
     dist_xy,dist_z,xy_u,z_u = add.compute_dist(uparams)
     tz_u = add.compute_tz(uparams)
     conflict_z = dist_z < 800
@@ -336,9 +370,9 @@ def main():
                      apply_mask(xy_u["others"],(~conflict)/(~conflict)),
                      apply_mask(xy_u["others"],(~conflict_z)/(~conflict_z)),
                      apply_mask(xy_u["others"],conflict/conflict),
-                     ],s=4)
+                     ],s=4,xlabel="x",ylabel="y")
     elif args.animate =="z":
-        plotanimate(list(tz_u.values()),s=4,margin=10,equal=False)
+        plotanimate(list(tz_u.values()),s=4,margin=10,xlabel="t",ylabel="z",equal=False)
 if __name__ == "__main__":
     main()
 #python3 add_uncertainty.py -situation ./situations/38930310_1657885467_1657885501.situation -wpts z
