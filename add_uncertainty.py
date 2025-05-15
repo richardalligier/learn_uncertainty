@@ -274,7 +274,7 @@ class Add_uncertainty:
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         return {k:apply_mask(s.generate_tz(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
 
-    def compute_dist(self,duparams):
+    def compute_all(self,duparams):
         uparams = self.umodel.build_uparams(**duparams)
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         xy_u = {k:apply_mask(s.generate_xy(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
@@ -285,6 +285,11 @@ class Add_uncertainty:
         names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
         dist_xy = self.qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
         return dist_xy,dist_z,xy_u,z_u
+
+    def compute_min_distance_xy_on_conflicting_z(self,duparams,thresh_z):
+        dist_xy,dist_z,xy_u,z_u = self.compute_all(duparams)
+        conflict_z = dist_z < thresh_z
+        return named.nanamin(apply_mask(dist_xy,conflict_z/conflict_z),dim=(OTHERS,T))
 
 
 def main():
@@ -332,8 +337,10 @@ def main():
     # names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
     # print(names_xy)
     # dist_xy = qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
-    dist_xy,dist_z,xy_u,z_u = add.compute_dist(uparams)
+    dist_xy,dist_z,xy_u,z_u = add.compute_all(uparams)
     tz_u = add.compute_tz(uparams)
+    print(add.compute_min_distance_xy_on_conflicting_z(uparams,thresh_z=800))
+    raise Exception
     conflict_z = dist_z < 800
     conflict_xy = dist_xy < 8*1852
 
