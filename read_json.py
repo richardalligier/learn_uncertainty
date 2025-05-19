@@ -69,6 +69,13 @@ class Deviated_aircraft:
 #         return df.assign(x=x,y=y)
 
 
+def intevalle_distance(a,b):
+    amin,amax = a
+    bmin,bmax = b
+    r1 = amin-bmax
+    r2 = bmin-amax
+    return max(r1,r2)
+
 class  Situation:
     def __init__(self,trajectories,deviated):
         self.trajectories = trajectories
@@ -98,6 +105,24 @@ class  Situation:
         deviated = Deviated_aircraft(fjson[DEVIATED_AIRCRAFT])
         trajectories = trajectories#.query("flight_id == @deviated.flight_id")
         return Situation(trajectories,deviated)
+    def cut_diffalt(self,threshalt):
+        deviated_fid = self.deviated.flight_id
+        deviated_traj = self.trajectories.query("flight_id==@deviated_fid")
+        dalt = {}
+        for fid in self.trajectories.flight_id.unique():
+            traj = self.trajectories.query("flight_id==@fid")
+            minalt = traj.altitude.min()
+            maxalt = traj.altitude.max()
+            dalt[fid]=(minalt,maxalt)
+        devdalt = dalt[deviated_fid]
+        # print(devdalt)
+        lid = []
+        for fid,dalt in dalt.items():
+            if intevalle_distance(devdalt,dalt)<=threshalt:
+                # print(dalt)
+                lid.append(fid)
+        # print(len(lid))
+        return Situation(self.trajectories.query("flight_id in @lid"),self.deviated)
     def cut(self,start=None,stop=None):
         if start is None:
             start = self.deviated.start

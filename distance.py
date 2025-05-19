@@ -2,6 +2,7 @@ import os
 import fit_traj
 from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS,WPTS, deserialize_dict
 import torch
+# torch.use_deterministic_algorithms(True)
 from torchtraj import qhull,named,uncertainty
 from add_uncertainty import Add_uncertainty,VALUESTOTEST
 
@@ -13,9 +14,17 @@ PARAMS = "params"
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def generate_distance_function(dsituationvalues,step):
-    lsit = [{k:v.to(DEVICE) for k,v in s.items()} for s in dsituationvalues]#[:1]
-    ladd = [Add_uncertainty(s,step=step) for s in lsit]#[:1]
+def generate_distance_function(dsituation,step):
+    # dsituationvalues = [{k:v for k,v in s.items()} for s in dsituationvalues]#[:1]
+    print("formatting traj data started")
+
+    ladd=[]
+#    dsituation ={82:dsituation[82]}
+    for k,s in dsituation.items():
+        print(k)
+        # print(s["deviated"].tdeviation.dtype)
+        ladd.append(Add_uncertainty(s,step=step))# for s in dsituationvalues]#[:1]
+    print("formatting traj data done")
     def distance(dargs):
         for x in dargs.values():
             assert(x.dim()<=2)
@@ -33,8 +42,19 @@ def generate_distance_function(dsituationvalues,step):
         #     "vspeed": vspeed,
         # }
         with torch.no_grad():
-            l_xy_z = [add.compute_dist(dargs)[:2] for add in ladd]
-        return l_xy_z
+            l_min_xy = []
+            l_id = []
+            for i,add in enumerate(ladd):
+                # print(i,torch.cuda.memory_allocated()/1024/1024)
+                print(i)
+                torch.cuda.empty_cache()
+                # print(i,torch.cuda.memory_allocated()/1024/1024)
+                add.to(DEVICE)
+                # print(i,torch.cuda.memory_allocated()/1024/1024)
+                l_min_xy.append(add.compute_min_distance_xy_on_conflicting_z(dargs,thresh_z=800))
+                l_id.append(add.sit_uncertainty["deviated"].sitf.fid)
+                add.to("cpu")
+        return named.cat(l_min_xy, dim=l_min_xy[0].names.index(SITUATION))/1852,named.cat(l_id,dim=l_id[0].names.index(SITUATION))
 
     return distance
 
@@ -42,9 +62,9 @@ def generate_distance_function(dsituationvalues,step):
 
 
 
-#DSITUATION = load_situation("all.dsituation")
-DSITUATION = { 0: load_situation("/disk2/jsonKim/situations/2207/39068828_1658651339_1658651900.situation")}
-distance = generate_distance_function(list(DSITUATION.values()),step=1)
+DSITUATION = load_situation("allcopy.dsituation")
+#DSITUATION = { 0: load_situation("/disk2/jsonKim/situations/2207/39068828_1658651339_1658651900.situation")}
+distance = generate_distance_function(DSITUATION,step=5)#list(DSITUATION.values()),step=5)
 # def distance(params):
 #     nind = params.shape[0]
 #     print(nind)
@@ -61,25 +81,27 @@ distance = generate_distance_function(list(DSITUATION.values()),step=1)
 #         return distancecut(params,ghman,ghunman,qhulldist)
 
 
-
-
 def main():
     # DSITUATION = { 0: load_situation("disk2/jsonKim/situations/2207/39068828_1658651339_1658651900.situation")}
     # distance = generate_distance_function(DSITUATION,step=1)
-    params = torch.tensor([[0.5,2.]])
-    uparams = {
-        "dangle": dangle,
-        "dt0": dt0,
-        "dt1": dt1,
-        "dspeed": dspeed,
-        "ldspeed": ldspeed,
-        "vspeed": vspeed,
+    import time
+    duparams = {
+        "dangle": torch.tensor([[-0.1,0.1]])*0,
+        "dt0": torch.tensor([[-10,10]])*0,
+        "dt1": torch.tensor([[-10,10]])*0,
+        "dspeed": torch.tensor([[1,1]]),
+        "ldspeed": torch.tensor([[1,1.]]),
+        "vspeed": torch.tensor([[1,1]]),
     }
-    d = distance(params)
-    print(named.nanamin(d[0],dim=("t",))/1852)
-    print(lsit[0]["others"].fid)
-    dn = distance(params)
-    print(dn[0]-d[0])
+    duparams = {k:v.to(DEVICE) for k,v in duparams.items()}
+    for _ in range(1):
+        st = time.perf_counter()
+        d,lid = distance(duparams)
+        print(time.perf_counter()-st)
+    print(d[0])
+    # vmin,imin = torch.min(d[0].rename(None),dim=-1)
+    # print(vmin==0.)
+    # print(lid[imin])
 
 if __name__ == '__main__':
     main()

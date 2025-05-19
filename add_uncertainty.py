@@ -144,7 +144,15 @@ def distz(amin,amax,bmin,bmax):
 
 
 
-
+def to(dl,device):
+    if isinstance(dl,dict):
+        return {k:to(v,device) for k,v in dl.items()}
+    elif isinstance(dl,list):
+        return [to(v,device) for v in dl]
+    elif isinstance(dl,torch.Tensor):
+        return dl.to(device)
+    else:
+        raise Exception
 
 class WithUncertainty:
     def __init__(self,sitf,dtimes,dargs,apply_uncertainty):
@@ -154,6 +162,15 @@ class WithUncertainty:
         self.apply_uncertainty = apply_uncertainty
     def add_uncertainty(self,uparams):
         return self.apply_uncertainty(self.sitf.clone(),self.idtimes,self.dargs,uparams)
+    def to(self,device):
+        self.idtimes = to(self.idtimes,device)
+        self.dargs = to(self.dargs,device)
+        self.sitf = self.sitf.to(device)
+        return self
+
+#flights.add_tensors_operations(SituationOthers)
+    # def to(self):
+    #     return
     # def generate_xy(self,uparams,t):
     #     return self.add_uncertainty(uparams).generate_xy(t)
     # def generate_z(self,uparams,t):
@@ -187,6 +204,8 @@ class Uncertainty_model:
     @classmethod
     def apply_uncertainty_deviated(cls,fdeviated,diwpts,dargs,uparams):
         dixy = diwpts["fxy"]
+        # print(dixy)
+        # raise Exception
         uxy = uparams["fxy"]
         ljob_xy = [
             lambda f:uncertainty.addangle(uxy[cls.DANGLE],dixy[cls.DANGLE]["tdeviation"],dixy[cls.DANGLE]["tturn"],dixy[cls.DANGLE]["trejoin"],f,beacon=fdeviated.beacon),
@@ -210,7 +229,7 @@ class Uncertainty_model:
         "deviated":{
             "fxy": {
                 cls.DANGLE: timesofinterest,
-                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x-1}),
+                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x}),
                 cls.DT1: timesofinterest,
                 cls.DSPEED: timesofinterest,
             }
@@ -290,6 +309,12 @@ class Add_uncertainty:
         dist_xy,dist_z,xy_u,z_u = self.compute_all(duparams)
         conflict_z = dist_z < thresh_z
         return named.nanamin(apply_mask(dist_xy,conflict_z/conflict_z),dim=(OTHERS,T))
+    def to(self,device):
+        # self.umodel = self.umodel.to(device)
+        self.t = self.t.to(device)
+        self.masked_t = {k:s.to(device) for k,s in self.masked_t.items()}
+        self.sit_uncertainty = {k:s.to(device) for k,s in self.sit_uncertainty.items()}
+        self.qhulldist = self.qhulldist.to(device)
 
 
 def main():
@@ -302,9 +327,14 @@ def main():
     parser.add_argument('-wpts',default=None)
     args = parser.parse_args()
     # print(args.json)
-    device="cuda"
-    sit = load_situation(args.situation)
+    device="cpu"
+    # sit = load_situation("all.dsituation")[82]#
+    # print(sit["deviated"].tdeviation.names)
+    # print(sit["deviated"].tdeviation.shape)
+    sit=load_situation(args.situation)
+    # print(sit)
     sit = {k:s.to(device) for k,s in sit.items()}
+    clonedsit = {k:s.clone() for k,s in sit.items()}
     # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...))
     # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
     # sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
@@ -337,24 +367,29 @@ def main():
     # names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
     # print(names_xy)
     # dist_xy = qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
+    print(add.sit_uncertainty["deviated"].sitf.tdeviation)
+    print(add.sit_uncertainty["deviated"].sitf.tturn)
+    print(add.sit_uncertainty["deviated"].sitf.trejoin)
     dist_xy,dist_z,xy_u,z_u = add.compute_all(uparams)
     tz_u = add.compute_tz(uparams)
     print(add.compute_min_distance_xy_on_conflicting_z(uparams,thresh_z=800))
-    raise Exception
+    # raise Exception
     conflict_z = dist_z < 800
     conflict_xy = dist_xy < 8*1852
 
     if args.wpts == "xy":
-        wpts_xy = {k:s.add_uncertainty(uparams[k]).fxy.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
+        wpts_xy = {k:s.add_uncertainty(add.umodel.build_uparams(**uparams)[k]).fxy.compute_wpts_with_wpts0() for k,s in add.sit_uncertainty.items()}
+        clonedwpts_xy = {k:s.fxy.compute_wpts_with_wpts0() for k,s in clonedsit.items()}
         for k,wpts in wpts_xy.items():
             print(k)
-            print(wpts)
+            # print(wpts)
             print(wpts.shape,wpts.names)
             # raise Exception
             recplot(wpts,lambda x,y:scatter_with_number(x,y,0))
+            #recplot(clonedwpts_xy[k],lambda x,y:scatter_with_number(x,y,0))
             plt.show()
     elif args.wpts =="z":
-        wpts_z = {k:s.add_uncertainty(uparams[k]).fz.compute_wpts_with_wpts0() for k,s in sit_uncertainty.items()}
+        wpts_z = {k:s.add_uncertainty(add.umodel.build_uparams(**uparams)[k]).fz.compute_wpts_with_wpts0() for k,s in add.sit_uncertainty.items()}
         for k,wpts in wpts_z.items():
             if k=="others":
                 print(k)

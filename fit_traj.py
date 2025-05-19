@@ -527,12 +527,15 @@ def main():
     )
     parser.add_argument('-json')
     parser.add_argument('-situation')
+    parser.add_argument("-cutalt",type = float)
     args = parser.parse_args()
-    print(args.json)
+    # print(args.json)
     sit = read_json.Situation.from_json(args.json)
-    plt.scatter(sit.trajectories.x,sit.trajectories.y)
-    plt.show()
-    raise Exception
+    if args.cutalt is not None:
+        sit = sit.cut_diffalt(args.cutalt)
+    # plt.scatter(sit.trajectories.x,sit.trajectories.y)
+    # plt.show()
+    # raise Exception
     device = "cpu"
     fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL*0.99,thresh_z=THRESH_Z_MODEL * 0.99)
     save_situation({"deviated":fdeviated,"others":fothers},args.situation)
