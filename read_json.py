@@ -119,9 +119,7 @@ class  Situation:
         lid = []
         for fid,dalt in dalt.items():
             if intevalle_distance(devdalt,dalt)<=threshalt:
-                # print(dalt)
                 lid.append(fid)
-        # print(len(lid))
         return Situation(self.trajectories.query("flight_id in @lid"),self.deviated)
     def cut(self,start=None,stop=None):
         if start is None:

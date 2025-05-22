@@ -37,7 +37,7 @@ def plotanimate(lxy,xlabel,ylabel,s=1.5,margin=20.,equal=True):
         # print(pos)
         # raise Exception
         for scat,xy in zip(scats,lxy):
-            pos = xy.cpu()[...,i:i+40:4,:].rename(None).flatten(end_dim=-2).numpy()
+            pos = xy.cpu()[...,i:i+10:4,:].rename(None).flatten(end_dim=-2).numpy()
             scat.set_offsets(pos)
         return scats
     ani = animation.FuncAnimation(fig, func=animate, init_func=init, frames=lxy[0].shape[-2],
@@ -281,13 +281,24 @@ class Uncertainty_model:
         return uparams
 
 
+
+# def split_on_t(f):
+#     def dosplit(*args,**kwargs):
+#         print(args)
+#         print(kwargs)
+#         print("ada")
+#         return f(*args,**kwargs)
+#     return dosplit
+
 class Add_uncertainty:
-    def __init__(self,sit,step,thresh_thole=20,dist_discretize=180,umodel=None):
+    def __init__(self,sit,step,thresh_thole=20,dist_discretize=180,umodel=None,capmem=None):
+        self.capmem=capmem
         self.umodel = Uncertainty_model() if umodel is None else umodel
         self.t = sit["deviated"].generate_trange_conflict(step=step)
         self.masked_t = {k:s.generate_mask(self.t,thresh=20) for k,s in sit.items()}
         self.sit_uncertainty = self.umodel.precompute_situation_uncertainty(sit)
         self.qhulldist = QhullDist(n=dist_discretize,device=self.t.device)
+
     def compute_tz(self,duparams):
         uparams = self.umodel.build_uparams(**duparams)
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
@@ -302,9 +313,9 @@ class Add_uncertainty:
         dist_z= distz(*minmax(z_u["others"],list(uparams["others"]["fz"].keys())),
                       z_u["deviated"],z_u["deviated"])
         names_xy =list(set(uparams["deviated"]["fxy"].keys()).union(set(uparams["others"]["fxy"].keys())))
-        dist_xy = self.qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy)
+        dist_xy = self.qhulldist.dist(xy_u["others"],xy_u["deviated"],dimsInSet=names_xy,capmem=self.capmem)
         return dist_xy,dist_z,xy_u,z_u
-
+    # @split_on_t
     def compute_min_distance_xy_on_conflicting_z(self,duparams,thresh_z):
         dist_xy,dist_z,xy_u,z_u = self.compute_all(duparams)
         conflict_z = dist_z < thresh_z

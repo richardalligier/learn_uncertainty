@@ -39,9 +39,14 @@ def check_is_named_tensor(t,dtype):
 def deserialize_dict(x):
     return {k:deserialize(v) for k,v in x.items()}
 
+def deserialize_list(x):
+    return [deserialize(v) for v in x]
+
 def serialize(a):
     if isinstance(a, dict):
         return deserialize_dict, {k:serialize(v) for k,v in a.items()}
+    if isinstance(a, list):
+        return deserialize_list, [serialize(v) for v in a]
     elif isinstance(a, SituationOthers):
         return a.serialize()
     else:
@@ -85,8 +90,9 @@ class SituationOthers:
     def dmap(cls,fsit,f):
         res = {}
         for k,v in fsit.dictparams().items():
+            # print(k)
             if isinstance(v,torch.Tensor):
-                res[k]=f(v)
+                res[k]=f(k,v)
             elif isinstance(v,flights.Flights):
                 res[k]= v.dmap(v,f)
             else:
@@ -417,12 +423,13 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
     ddeviated["beacon"] = torch.tensor([[beacon_rejoin.x,beacon_rejoin.y]],device=device,dtype=DTYPE,names=(BATCH,XY))
     deviated = SituationDeviated(**ddeviated)
     quality_check(sit,deviated)
-    deviated = deviated.dmap(deviated,lambda v:v.rename(**{BATCH:SITUATION}))
+    deviated = deviated.dmap(deviated,lambda k,v:v.rename(**{BATCH:SITUATION}))
     dothers = convert(df.query("flight_id!=@sit.deviated.flight_id"))
     dothers["tzero"] = ddeviated["tzero"].clone().detach()
     others = SituationOthers(**dothers)
     quality_check(sit,others)
-    others = others.dmap(others,lambda v:named.unsqueeze(v.rename(**{BATCH:OTHERS}),0,SITUATION))
+    # others = others.dmap(others,lambda v:named.unsqueeze(v,0,SITUATION))
+    others = others.dmap(others,lambda k,v: v.rename(**{BATCH:SITUATION}) if k=="tzero" else named.unsqueeze(v.rename(**{BATCH:OTHERS}),0,SITUATION))
     return deviated, others
 # linear regression on "position=f(v)"
 # def fit_speed(trajreal,f,t_zero,device):#(trajreal,t):
