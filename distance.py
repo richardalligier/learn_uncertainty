@@ -20,13 +20,19 @@ def generate_distance_function(dsituation,step):
     print("formatting traj data started")
     ladd=[]
 #    dsituation ={82:dsituation[82]}
-    for k,ss in dsituation.items():
-        for s in ss:
-            print("nb OTHERS",k)
-            print(s["deviated"].tdeviation.names)
-            print(s["deviated"].tdeviation.shape)
+    for k,ss in tqdm.tqdm(dsituation.items()):
+        for s in tqdm.tqdm(ss):
+            # print("nb OTHERS",k)
+            # print(s["deviated"].tdeviation.names)
+            # print(s["deviated"].tdeviation.shape)
             # print(s["deviated"].tdeviation.dtype)
             ladd.append(Add_uncertainty(s,step=step,capmem=None))# for s in dsituationvalues]#[:1]
+            # 1000000000000000000000
+            # 10000000000
+            #  1000000000
+            # 1000000000000000
+            # 1000000000000
+            # 100000000000
     print("formatting traj data done")
     def distance(dargs):
         for x in dargs.values():
@@ -40,6 +46,7 @@ def generate_distance_function(dsituation,step):
             l_min_xy = []
             l_id = []
             for add in tqdm.tqdm(ladd):
+            # for add in tqdm.tqdm(ladd):
                 #print(i,torch.cuda.memory_allocated()/1024/1024)
                 torch.cuda.empty_cache()
                 # print(i,torch.cuda.memory_allocated()/1024/1024)
@@ -53,12 +60,12 @@ def generate_distance_function(dsituation,step):
 
 #DSITUATION = load_situation("all_800.dsituation")
 # DSITUATION = load_situation("test.dsituation")
-DSITUATION = load_situation("all_800_10_1800_1.dsituation")
+DSITUATION = load_situation("all_800_10_1800_2.dsituation")
 
 
 
-print(DSITUATION)
-# DSITUATION = { 61: DSITUATION[61]}
+# print(DSITUATION)
+# DSITUATION = { 4: DSITUATION[4]}
 distance = generate_distance_function(DSITUATION,step=5)#list(DSITUATION.values()),step=5)
 
 
