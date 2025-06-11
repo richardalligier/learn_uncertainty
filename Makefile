@@ -1,17 +1,18 @@
+include CONFIG
 #FOLDER_JSON = ./data
 # FOLDER_JSON = ./jsonsmall
 #FOLDER_JSON = ./july_test_2
 
 THRESH_ALT= 800
-NCLOSEST = 10
+NCLOSEST = 5
 THRESH_ALT_CLOSEST= 1800
-NSITUATION_MAX = 3
+NSITUATION_MAX = 4
 
-FOLDER_JSON = /disk2/jsonKim/json
+FOLDER_JSON = $(FOLDER)/json
 
-FOLDER_SIT_RAW = /disk2/jsonKim/situations_$(THRESH_ALT)
+FOLDER_SIT_RAW = $(FOLDER)/situations_$(THRESH_ALT)
 
-FOLDER_SIT = /disk2/jsonKim/situations_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)
+FOLDER_SIT = $(FOLDER)/situations_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)
 
 # FILES = $(shell cd $(FOLDER_JSON);  ls *.json)
 FILES = $(shell cd $(FOLDER_JSON);  find -type f | grep .json$ | cut -c 3-)
@@ -19,7 +20,7 @@ FILES = $(shell cd $(FOLDER_JSON);  find -type f | grep .json$ | cut -c 3-)
 FILES_SIT = $(foreach f, $(FILES), $(FOLDER_SIT)/$(f:.json=.situation))
 
 
-TARGET_FILE = all_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)_$(NSITUATION_MAX).dsituation
+TARGET_FILE = $(FOLDER)/all_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)_$(NSITUATION_MAX).dsituation
 
 
 all: $(TARGET_FILE)

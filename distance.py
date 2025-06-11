@@ -6,7 +6,7 @@ import torch
 from torchtraj import qhull,named,uncertainty
 from add_uncertainty import Add_uncertainty,VALUESTOTEST
 import tqdm
-
+from collections import namedtuple
 
 THRESHT = 20 # seconds
 THRESHALT = 800 # feet
@@ -14,6 +14,18 @@ PARAMS = "params"
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+
+def read_config():
+    ''' read config to get folders '''
+    with open("CONFIG","r") as f:
+        l = [[x.strip() for x in line.split("=")] for line in f if len(line.strip())>0 and line.strip()[0]!="#"]
+        d = {k:v for k,v in l}
+    Config = namedtuple("config",list(d))
+    return Config(**d)
+
+# class 
 
 def generate_distance_function(dsituation,step):
     # dsituationvalues = [{k:v for k,v in s.items()} for s in dsituationvalues]#[:1]
@@ -58,9 +70,9 @@ def generate_distance_function(dsituation,step):
         return named.cat(l_min_xy, dim=l_min_xy[0].names.index(SITUATION))/1852,named.cat(l_id,dim=l_id[0].names.index(SITUATION))
     return distance
 
-#DSITUATION = load_situation("all_800.dsituation")
-# DSITUATION = load_situation("test.dsituation")
-DSITUATION = load_situation("all_800_10_1800_2.dsituation")
+CONFIG = read_config()
+
+DSITUATION = load_situation(os.path.join(CONFIG.FOLDER,"all_800_10_1800_2.dsituation"))
 
 
 
