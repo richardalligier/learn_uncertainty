@@ -12,6 +12,8 @@ import geosphere
 import operator as op
 import matplotlib.animation as animation
 from torchtraj.qhull import QhullDist
+from torch import nn
+
 VALUESTOTEST = "valuestotest"
 
 def plotanimate(lxy,xlabel,ylabel,s=1.5,margin=20.,equal=True):
@@ -290,8 +292,9 @@ class Uncertainty_model:
 #         return f(*args,**kwargs)
 #     return dosplit
 
-class Add_uncertainty:
+class Add_uncertainty(nn.Module):
     def __init__(self,sit,step,thresh_thole=20,dist_discretize=180,umodel=None,capmem=None):
+        super().__init__()
         self.capmem=capmem
         self.umodel = Uncertainty_model() if umodel is None else umodel
         self.t = sit["deviated"].generate_trange_conflict(step=step)
@@ -321,7 +324,8 @@ class Add_uncertainty:
         conflict_z = dist_z < thresh_z
         return named.nanamin(apply_mask(dist_xy,conflict_z/conflict_z),dim=(OTHERS,T))
     def to(self,device):
-        # self.umodel = self.umodel.to(device)
+        #super().to(device)
+        #self.umodel = self.umodel.to(device)
         self.t = self.t.to(device)
         self.masked_t = {k:s.to(device) for k,s in self.masked_t.items()}
         self.sit_uncertainty = {k:s.to(device) for k,s in self.sit_uncertainty.items()}
