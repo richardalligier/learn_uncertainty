@@ -1,0 +1,3 @@
+[project]
+dynamic = ["version"]
+name = "learn_uncertainty"
