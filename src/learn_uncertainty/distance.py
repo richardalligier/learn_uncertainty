@@ -172,7 +172,7 @@ def main():
     }
     duparams = {k:v.to(DEVICE) for k,v in duparams.items()}
     CONFIG = read_config()
-    fname = "all_800_10_1800_2.dsituation"
+    fname = "all_800_10_1800_2_ezae.dsituation"#"all_800_10_1800_2.dsituation"
     DSITUATION = load_situation(os.path.join(CONFIG.FOLDER,fname))
     # DSITUATION = {10:DSITUATION[10][16:17]}#load_situation(os.path.join(CONFIG.FOLDER,fname))
     g = GenerateDistance.from_dsituation_step(DSITUATION,step=5)

@@ -1,5 +1,5 @@
 import os
-from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict
+from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict, Alignment,donothing,NoAlignedAfter,NoAlignedBefore
 import add_uncertainty
 import torch
 from torchtraj import named
@@ -9,6 +9,7 @@ import tqdm
 def merge(lsit):
     d = {k:[s[k] for s in lsit] for k in lsit[0]}
     for k,v in d.items():
+        # print(v)
         if len(v)==1:
             d[k] = v[0]
         else:
@@ -47,6 +48,12 @@ def main():
             lfname.append(fname)
             # print(fname)
     lsitraw = [load_situation(fname) for fname in lfname]
+    print(f"{len(lsitraw)=}")
+    # print({type(k) for k in lsitraw})
+    lsitraw = [sit for sit in lsitraw if not isinstance(sit,Exception)]
+    # print({type(k) for k in lsitraw})
+    # print({type(k["others"]) for k in lsitraw})
+    # print({type(k["deviated"]) for k in lsitraw})
     print(f"{len(lsitraw)=}")
     with torch.no_grad():
         lsit = lsitraw# if args.nclosest is None else [keep_closest(sit,args.nclosest,args.thresh_z) for sit in tqdm.tqdm(lsitraw)]

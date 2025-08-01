@@ -1,5 +1,5 @@
 import os
-from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict
+from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict, Alignment,donothing,NoAlignedAfter,NoAlignedBefore
 import add_uncertainty
 import torch
 from torchtraj import named
@@ -74,8 +74,11 @@ def main():
     parser.add_argument('-thresh_z',type=float)
     args = parser.parse_args()
     sit = load_situation(args.situationin)
-    with torch.no_grad():
-        sitout = sit if args.nclosest is None else keep_closest(sit,args.nclosest,args.thresh_z)
+    if isinstance(sit,Exception):
+        sitout = sit
+    else:
+        with torch.no_grad():
+            sitout = sit if args.nclosest is None else keep_closest(sit,args.nclosest,args.thresh_z)
     save_situation(sitout,args.situationout)
 
 

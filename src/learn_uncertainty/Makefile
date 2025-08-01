@@ -12,14 +12,20 @@ NCLOSEST = 10
 THRESH_ALT_CLOSEST= 1800
 NSITUATION_MAX = 2
 
-FOLDER_JSON = $(FOLDER)/json
+KEEP_DURATION_LONGER_THAN = 120
 
-FOLDER_SIT_RAW = $(FOLDER)/situations_$(THRESH_ALT)
+FOLDER_ALLJSON = $(FOLDER)/json
 
-FOLDER_SIT = $(FOLDER)/situations_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)
+FOLDER_JSON = $(FOLDER)/json_selected_$(KEEP_DURATION_LONGER_THAN)
+
+NAME_SIT_RAW = situations_$(THRESH_ALT)_$(KEEP_DURATION_LONGER_THAN)
+
+FOLDER_SIT_RAW = $(FOLDER)/$(NAME_SIT_RAW)
+
+FOLDER_SIT = $(FOLDER)/$(NAME_SIT_RAW)_$(KEEP_DURATION_LONGER_THAN)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)
 
 # FILES = $(shell cd $(FOLDER_JSON);  ls *.json)
-FILES = $(shell cd $(FOLDER_JSON);  find -type f | grep .json$ | cut -c 3-)
+FILES = $(shell cd $(FOLDER_JSON);  find -type f,l | grep .json$ | cut -c 3-)
 #FILES = $(shell cd $(FOLDER_SIT_RAW);  find -type f | grep .situation$ | cut -c 3-)
 
 FILES_SIT = $(foreach f, $(FILES), $(FOLDER_SIT)/$(f:.json=.situation))
@@ -31,6 +37,9 @@ TARGET_FILE = $(FOLDER)/all_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)_$(NS
 
 
 all: $(TARGET_FILE)
+
+select:
+	python3 select_situations.py -jsonfolderin $(FOLDER_ALLJSON) -jsonfolderout $(FOLDER_JSON) -keep_duration_longer_than $(KEEP_DURATION_LONGER_THAN)
 
 #-nclosest $(NCLOSEST) -thresh_z $(THRESH_ALT_CLOSEST)
 

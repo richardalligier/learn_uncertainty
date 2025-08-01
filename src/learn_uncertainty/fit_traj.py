@@ -15,6 +15,12 @@ from pathlib import Path
 import os
 from collections import namedtuple
 
+class NoAlignedAfter(Exception):pass
+class NoAlignedBefore(Exception):pass
+
+import warnings
+warnings.simplefilter(action='ignore', category=DeprecationWarning)
+warnings.simplefilter(action='ignore', category=UserWarning)
 
 def read_config():
     ''' read config to get folders '''
@@ -35,6 +41,8 @@ SITUATION = "situation"
 OTHERS = "others"
 DTYPE = torch.float32
 
+ALIGN_MIN_DISTANCE = 200
+ALIGN_ANGLE_PRECISION = 2
 
 def unix2datetime(u):
     return datetime.datetime.fromtimestamp(u,datetime.UTC).strftime('%Y-%m-%d %H:%M:%S')
@@ -49,13 +57,19 @@ def deserialize_dict(x):
 def deserialize_list(x):
     return [deserialize(v) for v in x]
 
+def donothing(x):
+    return x
+
 def serialize(a):
+    #print(type(a))
     if isinstance(a, dict):
         return deserialize_dict, {k:serialize(v) for k,v in a.items()}
     if isinstance(a, list):
         return deserialize_list, [serialize(v) for v in a]
     elif isinstance(a, SituationOthers):
         return a.serialize()
+    elif isinstance(a, Exception):
+        return donothing, a
     else:
         raise Exception(f"Serialize {type(a)} not supported")
 
@@ -102,6 +116,8 @@ class SituationOthers:
                 res[k]=f(k,v)
             elif isinstance(v,flights.Flights):
                 res[k]= v.dmap(v,f)
+            elif isinstance(v,Alignment):
+                res[k]= v.dmap(v,f)
             else:
                 raise Exception(f"dmap {k} not Tensor nor Flights")
         return cls(**res)
@@ -111,6 +127,8 @@ class SituationOthers:
             if isinstance(v,torch.Tensor):
                 res[k] = named.serialize(v)
             elif isinstance(v,flights.Flights):
+                res[k] = v.serialize()
+            elif isinstance(v,Alignment):
                 res[k] = v.serialize()
             else:
                 raise Exception(f"dmap {k} not Tensor nor Flights")
@@ -166,29 +184,35 @@ class SituationOthers:
                 # print(k,v[0].shape,d[k].shape)
             elif isinstance(v[0],flights.Flights):
                 d[k] = flights.named_cat_lflights(v,dimname)
+            elif isinstance(v[0],Alignment):
+                d[k] = Alignment.cat(v,dimname=dimname)
             else:
                 raise Exception(f"cat {k} not Tensor nor Flights")
         return cls(**d)
 
 flights.add_tensors_operations(SituationOthers)
 
-class Alignment:
-    def __init__(self,beacon,tstart,tend):
-        self.beacon = beacon
-        self.tstart = tstart
-        self.tend = tend
 
 class SituationDeviated(SituationOthers):
-    def __init__(self,tzero,fid,fxy,fz,t,tdeviation,tturn,trejoin,beacon):#,wpt_start,wpt_turn,wpt_rejoin):
+    def __init__(self,tzero,fid,fxy,fz,t,tdeviation,tturn,align_before,align_after,actual_min_dist):#,trejoin,beacon):#,wpt_start,wpt_turn,wpt_rejoin):
         super().__init__(tzero,fid,fxy,fz,t)
         assert check_is_named_tensor(tdeviation,DTYPE)
         assert check_is_named_tensor(tturn,DTYPE)
-        assert check_is_named_tensor(trejoin,DTYPE)
-        assert check_is_named_tensor(beacon,DTYPE)
+        # assert check_is_named_tensor(trejoin,DTYPE)
+        # assert check_is_named_tensor(beacon,DTYPE)
         self.tdeviation = tdeviation
-        self.trejoin = trejoin
         self.tturn = tturn
-        self.beacon = beacon
+        # self.trejoin = trejoin
+        # self.beacon = beacon
+        self.align_before = align_before
+        self.align_after = align_after
+        self.actual_min_dist = actual_min_dist
+    @property
+    def trejoin(self):
+        return self.align_after.tend
+    @property
+    def beacon(self):
+        return self.align_after.beacon
     def generate_trange_conflict(self,step):
         max_duration = (self.trejoin - self.tdeviation).max().item()
         tfromzero = torch.arange(start=0,end=max_duration,step=step,dtype=self.tturn.dtype,device=self.tturn.device).rename(T)
@@ -199,7 +223,7 @@ class SituationDeviated(SituationOthers):
         return res.align_to(...,T)
     def dictparams(self):
         res = super().dictparams()
-        for v in ["tdeviation","tturn","trejoin","beacon"]:
+        for v in ["tdeviation","tturn","align_before","align_after","actual_min_dist"]:
             res[v]=getattr(self,v)
         return res
 
@@ -338,6 +362,194 @@ def find_longest_aligned(df,beacons,thresh):
     selectednbok = j
     return whichbeacon,selectednbok
 
+
+class Alignment:
+    def __init__(self,beacon,tstart,tend):
+        self.beacon = beacon
+        self.tstart = tstart
+        self.tend = tend
+    @classmethod
+    def from_aligned(cls,alignedflight,t_zero_situation,dbeacons,device):
+        tstart = torch.tensor([alignedflight.timestampf.min()-t_zero_situation],device=device,dtype=DTYPE,names=(BATCH,))
+        tend = torch.tensor([alignedflight.timestampf.max()-t_zero_situation],device=device,dtype=DTYPE,names=(BATCH,))
+        beacon = dbeacons[alignedflight.navaid.iloc[0]]
+        beacon = torch.tensor([[beacon.x,beacon.y]],device=device,dtype=DTYPE,names=(BATCH,XY))
+        return Alignment(beacon,tstart,tend)
+    @classmethod
+    def dmap(cls,alignment,f):
+        res = {}
+        for k,v in alignment.dictparams().items():
+            # print(k)
+            if isinstance(v,torch.Tensor):
+                res[k]=f(k,v)
+            else:
+                raise Exception(f"dmap {k} not Tensor")
+        return cls(**res)
+    def dictparams(self):
+        return {k:getattr(self,k) for k in ["beacon","tstart","tend"]}
+    def serialize(self):
+        res = {}
+        for k,v in self.dictparams().items():
+            if isinstance(v,torch.Tensor):
+                res[k] = named.serialize(v)
+            else:
+                raise Exception(f"dmap {k} not Tensor nor Flights")
+        return self.deserialize,res
+    @classmethod
+    def deserialize(cls,d):
+        res = {}
+        for k,v in d.items():
+            res[k]=deserialize(v)
+        return cls(**res)
+    @classmethod
+    def cat(cls,lsit,dimname):
+        res =  {k:[getattr(s,k) for s in lsit] for k in lsit[0].dictparams()}
+        d = {}
+        for k,v in res.items():
+            if isinstance(v[0],torch.Tensor):
+                d[k] = named.cat(v,dim=v[0].names.index(dimname))
+            else:
+                raise Exception(f"cat {k} not Tensor nor Flights")
+        return cls(**d)
+    def __str__(self):
+        return f"beacon={self.beacon}, tstart={self.tstart}, tend={self.tend}"
+
+flights.add_tensors_operations(Alignment)
+
+DEBUG = False
+
+def decide_laligned_old(laligned):
+    ts = np.sort(np.unique(np.concat([f.timestampf.values for f in laligned])))
+    lres = []
+    lastnavaid = None
+    lastt = 0
+    for t in ts:
+        lalignedt = [f.query("timestampf==@t") for f in laligned]
+        lalignedt = [f for f in lalignedt if len(f)==1]
+        alignedt = min(lalignedt,key= lambda f: f.delta.values[0])
+        if alignedt.navaid.values[0]!=lastnavaid or abs(t-lastt) > 60:
+            lres.append([alignedt])
+            lastnavaid = alignedt.navaid.values[0]
+        else:
+            lres[-1].append(alignedt)
+        lastt=t
+    lres = [pd.concat((x)) for x in lres]
+#    lres.reverse()
+    lres = [x for x in lres if x.timestampf.values[-1]-x.timestampf.values[0]>60]
+    return lres
+
+def decide_laligned(laligned):
+    import graph_tool.all as gt
+    import time
+    ts = np.sort(np.unique(np.concat([f.timestampf.values for f in laligned])))
+    n = sum([f.shape[0] for f in laligned])
+    print(n)
+    g = gt.Graph(g=n,directed=True)
+    dlines = {i: line for i,line in enumerate(line for f in laligned for _,line in f.iterrows())}
+    edges = []
+    lweights = []
+    for i in dlines:
+        for j in dlines:
+            if i!=j:
+                #print(dlines[i])
+                if dlines[i].timestampf+60<dlines[j].timestampf or (dlines[i].timestampf<dlines[j].timestampf and dlines[i].navaid==dlines[j].navaid):
+                    edges.append((i,j))
+                    lweights.append(-(ALIGN_ANGLE_PRECISION - dlines[i].delta))
+    g.add_edge_list(edges)
+    start = time.perf_counter()
+    eprop_cost = g.new_edge_property("float")
+    # for e in g.iter_edges():
+    #     i = e[0]
+    #     eprop_cost[e] = -(ALIGN_ANGLE_PRECISION - dlines[i].delta)
+    n = len(dlines)
+    # print(n)
+    # a = np.zeros((n,n),dtype=float)
+    # print(a.shape)
+    # for i in dlines:
+    #     a[i]=-(ALIGN_ANGLE_PRECISION - dlines[i].delta)
+    # print(type(eprop_cost.a))
+    eprop_cost.a =lweights
+    #eprop_cost.set_values(deprop_cost)
+    # print(time.perf_counter()-start)
+    vend = g.add_vertex()
+    vstart = g.add_vertex()
+    for v in g.iter_vertices():
+        if v != vend:
+            e = g.add_edge(v, vend)
+            if v!=vstart:
+                eprop_cost[e] = -(ALIGN_ANGLE_PRECISION - dlines[v].delta)
+        if v != vstart:
+            e = g.add_edge(vstart, v)
+            eprop_cost[e] = 1
+    # print("graph done")
+    start = time.perf_counter()
+    longest_path, _ = gt.shortest_path(
+        g,
+        source=vstart,
+        target=vend,
+        weights=eprop_cost,
+        negative_weights=True,
+        dag=True,
+    )
+    # print(time.perf_counter()-start)
+    longest_path = [int(x) for x in longest_path if int(x) in dlines]
+    # print(longest_path)
+    lres = []
+    lastnavaid = None
+    lastt=0
+    for i in longest_path:
+        t = dlines[i].timestampf
+        if lres==[] or lastnavaid != dlines[i].navaid or abs(t-lastt) > 60:
+            lres.append([dlines[i]])
+            lastnavaid = dlines[i].navaid
+        else:
+            lres[-1].append(dlines[i])
+        lastt = t
+    lres = [pd.DataFrame((x)) for x in lres]
+    return lres
+
+def compute_alignments(sit,t_zero_situation,device):
+    df = sit.trajectories.query("flight_id==@sit.deviated.flight_id").copy()
+    df["timestampf"] = df["timestamp"]
+    df["timestamp"] = [pd.Timestamp(t,unit="s") for t in df["timestamp"].values]
+    deviated = TrafficFlight(df)
+    # print(sit.deviated.beacons)
+    laligned = [f.data for f in deviated.aligned_on_navpoint(sit.deviated.beacons,min_distance=ALIGN_MIN_DISTANCE,angle_precision=ALIGN_ANGLE_PRECISION,min_time="30s")]
+    laligned = decide_laligned(laligned)
+    if DEBUG:
+        print(sit.deviated.start)
+        print(sit.deviated.stop)
+        for f in laligned:
+            print(list(f))
+            print(f[["timestampf",'bearing', 'shift', 'delta',"navaid"]])
+        # raise Exception
+
+    dbeacons = {b.name:b for b in sit.deviated.beacons}
+
+    aligned_before = [f for f in laligned if f.timestampf.max()< sit.deviated.stop]
+    if aligned_before == []:
+        raise NoAlignedBefore
+    tmax_before = max([f.timestampf.max() for f in aligned_before])
+    aligned_before = [f for f in aligned_before if f.timestampf.max() == tmax_before][0]
+    before = Alignment.from_aligned(aligned_before,t_zero_situation,dbeacons,device)
+
+    aligned_after = [f for f in laligned if f.timestampf.min()> sit.deviated.start]
+    if aligned_after == []:
+        raise NoAlignedAfter
+    # print("aligned_after",sit.deviated.start,sit.deviated.stop)
+    # for f in aligned_after:
+    #     print(f[["timestampf",'bearing', 'shift', 'delta',"navaid"]])
+    tmin_after = min([f.timestampf.min() for f in aligned_after])
+    aligned_after = [f for f in aligned_after if f.timestampf.min() == tmin_after]
+    # print(len(aligned_after))
+    aligned_after = aligned_after[0]
+    after = Alignment.from_aligned(aligned_after,t_zero_situation,dbeacons,device)
+    if DEBUG:
+        print(dbeacons[aligned_after.navaid.iloc[0]].name)
+        raise Exception
+    return before,after
+
+
 def compute_t_rejoin(sit,thresh,nwpts):
     df = sit.trajectories.query("flight_id == @sit.deviated.flight_id").copy()
     # print(sit.deviated.flight_id,df.shape,sit.deviated.stop)
@@ -368,8 +580,10 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
     df["timestamp"] = df["timestamp"] - t_zero_situation
     t_deviation = sit.deviated.start - t_zero_situation
     t_turn = sit.deviated.stop - t_zero_situation
-    [(beacon_rejoin,line_rejoin)] = compute_t_rejoin(sit,thresh=200,nwpts=1)
-    t_rejoin =  line_rejoin.timestamp - t_zero_situation
+    # [(beacon_rejoin,line_rejoin)] = compute_t_rejoin(sit,thresh=200,nwpts=1)
+    align_before,align_after = compute_alignments(sit,t_zero_situation,device)
+    # t_rejoin =  line_rejoin.timestamp - t_zero_situation
+    t_rejoin = align_after.tend[0].item()
     def convert(df):
         lfxy = []
         lfz = []
@@ -427,13 +641,13 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
         return {"fid":lfid,"fxy":lfxy,"fz":lfz,"t":lt}
     ddeviated = convert(df.query("flight_id==@sit.deviated.flight_id"))
     ddeviated["tzero"] = torch.tensor([t_zero_situation],device=device,dtype=torch.int64,names=(BATCH,))
-    # ddeviated["fxy"] = flights.cat_lflights(ddeviated["fxy"])
-    # ddeviated["fz"] = flights.cat_lflights(ddeviated["fz"])
     ddeviated["tdeviation"] = torch.tensor([t_deviation],device=device,dtype=DTYPE,names=(BATCH,))
     ddeviated["tturn"] = torch.tensor([t_turn],device=device,dtype=DTYPE,names=(BATCH,))
-    # print(beacon_rejoin.x)
-    ddeviated["trejoin"] = torch.tensor([t_rejoin],device=device,dtype=DTYPE,names=(BATCH,))
-    ddeviated["beacon"] = torch.tensor([[beacon_rejoin.x,beacon_rejoin.y]],device=device,dtype=DTYPE,names=(BATCH,XY))
+    ddeviated["actual_min_dist"] = torch.tensor([sit.deviated.actual_pairwise.lateral_dist_at_tcpa.min()],device=device,dtype=DTYPE,names=(BATCH,))
+    # ddeviated["trejoin"] = torch.tensor([t_rejoin],device=device,dtype=DTYPE,names=(BATCH,))
+    # ddeviated["beacon"] = torch.tensor([[beacon_rejoin.x,beacon_rejoin.y]],device=device,dtype=DTYPE,names=(BATCH,XY))
+    ddeviated["align_before"] = align_before
+    ddeviated["align_after"] = align_after
     deviated = SituationDeviated(**ddeviated)
     quality_check(sit,deviated)
     deviated = deviated.dmap(deviated,lambda k,v:v.rename(**{BATCH:SITUATION}))
@@ -458,9 +672,9 @@ def convert_situation_to_flights(sit,initialize,device,thresh_xy,thresh_z):
 
 
 
-def scatter_with_number(x,y,istart=1,marker="o"):
+def scatter_with_number(x,y,istart=1,marker="o",linestyle="-"):
     plt.scatter(x,y,marker=marker)
-    plt.plot(x,y)
+    plt.plot(x,y,linestyle=linestyle)
     if istart is not None:
         for i in range(len(x)):
             plt.text(x[i],y[i],i+istart)
@@ -478,10 +692,12 @@ def plot_xy(xy,wpts):
 
 def recplot(xy,plotfunction):
     if xy.ndim == 2:
-        plotfunction(xy[:,0],xy[:,1])
+        return [plotfunction(xy[:,0],xy[:,1])]
     else:
+        res = []
         for i in range(xy.shape[0]):
-            recplot(xy[i],plotfunction)
+            res += recplot(xy[i],plotfunction)
+        return res
 
 
 def plot_xory(xy,wpts,duration,c):
@@ -558,8 +774,12 @@ def main():
     # plt.show()
     # raise Exception
     device = "cpu"
-    fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL*0.99,thresh_z=THRESH_Z_MODEL * 0.99)
-    save_situation({"deviated":fdeviated,"others":fothers},args.situation)
+    try:
+        fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL*0.99,thresh_z=THRESH_Z_MODEL * 0.99)
+        save_situation({"deviated":fdeviated,"others":fothers},args.situation)
+    except (NoAlignedAfter,NoAlignedBefore) as e:
+        print(type(e))
+        save_situation(e,args.situation)
 
 if __name__ == "__main__":
     main()

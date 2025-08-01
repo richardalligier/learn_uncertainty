@@ -41,15 +41,21 @@ class Point(mixins.PointMixin):
         return f"({self.longitude}, {self.latitude})"
 
 
-
+def pairwise_to_df(pairwisejson):
+    l = []
+    for k,v in pairwisejson.items():
+        v["flight_id"]=k
+        l.append(v)
+    return pd.json_normalize(l)
 
 class Deviated_aircraft:
-    def __init__(self,json_deviated_aircraft):
+    def __init__(self,json_deviated_aircraft,json):
         self.start = json_deviated_aircraft[START_DEVIATION]
         self.stop = json_deviated_aircraft[STOP_DEVIATION]
         self.flight_id = np.int64(json_deviated_aircraft[FLIGHT_ID])
-        #print(list(line for _,line in pd.json_normalize(json_deviated_aircraft[FLIGHT_PLAN]).iterrows()))
         self.beacons = [Point(line["name"],line.latitude,line.longitude) for _,line in pd.json_normalize(json_deviated_aircraft[FLIGHT_PLAN]).iterrows()]
+        self.predicted_pairwise = pairwise_to_df(json["predicted_pairwise"])
+        self.actual_pairwise = pairwise_to_df(json["actual_pairwise"])
     def __str__(self):
         return f"deviation (start,stop): ({self.start},{self.stop})"
 
@@ -104,7 +110,7 @@ class  Situation:
         trajectories = Traffic(trajectories).compute_xy(projection=PROJ).data
         # projection = Projection(trajectories)
         # trajectories = projection.transform(trajectories)
-        deviated = Deviated_aircraft(fjson[DEVIATED_AIRCRAFT])
+        deviated = Deviated_aircraft(fjson[DEVIATED_AIRCRAFT],fjson)
         trajectories = trajectories#.query("flight_id == @deviated.flight_id")
         return Situation(trajectories,deviated)
     def cut_diffalt(self,threshalt):
