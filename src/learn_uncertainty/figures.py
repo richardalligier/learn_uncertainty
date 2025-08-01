@@ -14,12 +14,20 @@ import matplotlib.lines as mlines
 
 UNITDIST = 1852
 LINEWIDTH_TARGET = 0.7
-SIZE_MARKER_TPOINTS = 20
-AFTER_COLOR = "blue"
-AFTER_MARKER = "+"
-BEFORE_COLOR = "red"
-BEFORE_MARKER = "x"
-
+SIZE_MARKER_TPOINTS = 10
+AFTER_COLOR = "black"
+AFTER_MARKER = "1"
+BEACON_MARKER = "2"
+BEFORE_COLOR = "black"
+BEFORE_MARKER = "3"
+class COLOR_UNCER():
+    def __init__(self):
+        self.cpt = 0
+        self.l= ["tab:blue","tab:orange"]
+    def get(self):
+        self.cpt = (self.cpt+1)%len(self.l)
+        return self.l[self.cpt]
+COLOR_UNCER=COLOR_UNCER()
 def get_beacon(alignment,beacons):
     return min(beacons,key=lambda p:np.sum((alignment.beacon[0].numpy()-np.array([p.x,p.y]))**2))
 
@@ -99,7 +107,7 @@ def draw_figure(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
     colorbeacons = "black"
     line,=plt.plot(bx,by,color=colorbeacons,linestyle="--")
     line.set_label("route")
-    line = plt.scatter(bx,by,marker='.',color=colorbeacons)
+    line = plt.scatter(bx,by,marker=BEACON_MARKER,color=colorbeacons)
     line.set_label("beacon")
     ######### plot traj
     #recplot(xy_u["deviated"],lambda x,y:plt.plot(x,y))#scatter_with_number(x,y,None,marker="1"))
@@ -111,11 +119,11 @@ def draw_figure(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
     recplot(points["rejoin"],lambda x,y:plt.plot(x/UNITDIST,y/UNITDIST,color="black"))
     line=recplot(points["next"],lambda x,y:plt.plot(x/UNITDIST,y/UNITDIST,color="black"))
     line[0][0].set_label("actual trajectory")
-    lines=recplot(xy_u,lambda x,y:plt.plot(x/UNITDIST,y/UNITDIST))
+    lines=recplot(xy_u,lambda x,y:plt.plot(x/UNITDIST,y/UNITDIST,color=COLOR_UNCER.get()))
     for line in lines:
         print(line)
         line[0].set_label("trajectory with uncertainty")
-    # plt.plot([points["prejoin"][0]/UNITDIST,beacon_after.x/UNITDIST],[points["prejoin"][1]/UNITDIST,beacon_after.y/UNITDIST],color="blue",linestyle="--",linewidth=LINEWIDTH_TARGET)
+    plt.plot([points["prejoin"][0]/UNITDIST,beacon_after.x/UNITDIST],[points["prejoin"][1]/UNITDIST,beacon_after.y/UNITDIST],color="black",linestyle="--",linewidth=LINEWIDTH_TARGET)
     print(xy_u.shape)
     def simplify(xy):
         tosqueeze = [i for i,(name,s) in enumerate(zip(xy.names,xy.shape)) if name not in [T,XY] and s==1]
@@ -126,23 +134,36 @@ def draw_figure(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
     linetstart = json.trajectories.query("timestamp==@json.deviated.start").query("flight_id==@json.deviated.flight_id")
     x,y = couple_swap(read_json.PROJ.transform(linetstart.longitude,linetstart.latitude))
     line=plt.scatter(x/UNITDIST,y/UNITDIST,color=BEFORE_COLOR,marker="s",s=SIZE_MARKER_TPOINTS)
-    line.set_label("end of alignment before deviation")
-    plt.text(x/UNITDIST,y/UNITDIST,s="tstartdeviation")
+#    line.set_label("end of alignment befor deviation")
     line,=plt.plot([points["beforedeviation"][-1,0]/UNITDIST,beacon_before.x/UNITDIST],[points["beforedeviation"][-1,1]/UNITDIST,beacon_before.y/UNITDIST],color=BEFORE_COLOR,linestyle="--",linewidth=LINEWIDTH_TARGET)
-    line.set_label("alignment before deviation")
+    line.set_label("alignment")
     x,y=beacon_before.x,beacon_before.y
     line=plt.scatter(x/UNITDIST,y/UNITDIST,color=BEFORE_COLOR,marker=BEFORE_MARKER)
     line.set_label("target beacon before deviation")
     linetstop = json.trajectories.query("timestamp==@json.deviated.stop").query("flight_id==@json.deviated.flight_id")
     x,y = couple_swap(read_json.PROJ.transform(linetstop.longitude,linetstop.latitude))
     line=plt.scatter(x/UNITDIST,y/UNITDIST,color=AFTER_COLOR,s=SIZE_MARKER_TPOINTS)
-    line.set_label("start of alignment after deviation")
+    line.set_label("start of alignment")
     #print(sit["deviated"].beacon[0])#[0],sit["deviated"].beacon[1])
     line=plt.scatter(*(points["prejoin"]/UNITDIST),color=AFTER_COLOR,marker="s",s=SIZE_MARKER_TPOINTS)
-    line.set_label("end of alignment after deviation")
+    line.set_label("end of alignment")
+    idwpts = add.sit_uncertainty["deviated"].idtimes["fxy"]["dangle"]
+    wpts = simplify(wpts)
     for i in range(sxy_u.shape[0]):
-        line,=plt.plot([sxy_u[i,-1,0]/UNITDIST,beacon_after.x/UNITDIST],[sxy_u[i,-1,1]/UNITDIST,beacon_after.y/UNITDIST],color=AFTER_COLOR,linestyle="--",linewidth=LINEWIDTH_TARGET)
-    line.set_label("alignment after deviation")
+        iwpts = idwpts["trejoin"].rename(None).item()#+1
+        color = COLOR_UNCER.get()
+        plt.plot([wpts[i,iwpts,0]/UNITDIST,beacon_after.x/UNITDIST],[wpts[i,iwpts,1]/UNITDIST,beacon_after.y/UNITDIST],color=color,linestyle="--",linewidth=LINEWIDTH_TARGET)
+        plt.scatter([wpts[i,iwpts,0]/UNITDIST],[wpts[i,iwpts,1]/UNITDIST],color=color,s=SIZE_MARKER_TPOINTS,marker="s")
+        iwpts = idwpts["tturn"].rename(None).item()#+1
+        plt.scatter([wpts[i,iwpts,0]/UNITDIST],[wpts[i,iwpts,1]/UNITDIST],color=color,s=SIZE_MARKER_TPOINTS)
+        iwpts = idwpts["tdeviation"].rename(None).item()#+1
+        plt.scatter([wpts[i,iwpts,0]/UNITDIST],[wpts[i,iwpts,1]/UNITDIST],color=color,s=SIZE_MARKER_TPOINTS,marker="s")
+    xshift = 10000
+    yshift = 10000
+    plt.text((x+xshift)/UNITDIST,y/UNITDIST,s="$t_0$", horizontalalignment='left', verticalalignment='top')
+    # for i in range(sxy_u.shape[0]):
+    #     line,=plt.plot([sxy_u[i,-1,0]/UNITDIST,beacon_after.x/UNITDIST],[sxy_u[i,-1,1]/UNITDIST,beacon_after.y/UNITDIST],color=AFTER_COLOR,linestyle="--",linewidth=LINEWIDTH_TARGET)
+#    line.set_label("alignment after deviation")
     x,y=couple_swap(sit["deviated"].beacon[0])
     line=plt.scatter(x/UNITDIST,y/UNITDIST,color=AFTER_COLOR,marker=AFTER_MARKER)
     line.set_label("target beacon after deviation")
@@ -202,17 +223,17 @@ def main():
         raise sit
     # print(sit)
     sit = {k:s.to(device) for k,s in sit.items()}
-    #print((sit["deviated"].beacon))
-    #raise Exception
     json = read_json.Situation.from_json(args.json)
-    # clonedsit = {k:s.clone() for k,s in sit.items()}
-    # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...))
-    # sit["others"] = sit["others"].dmap(sit["others"],lambda v:v.align_to(OTHERS,...)[346:347])
-    # sit["others"].fz.v,sit["others"].fz.theta= generate_sitothers_test_vz_(sit["others"])
-    # dev = np.radians(5);draw_figure(sit,json,device,"dangle",torch.tensor([-dev,dev],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True)
+    dev = np.radians(5)
     # draw_figure(sit,json,device,"dt1",torch.tensor([-60,60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True)
     # draw_figure(sit,json,device,"dt0",torch.tensor([-30,60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True)
-    draw_figure(sit,json,device,"dspeed",torch.tensor([0.8,1.1],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dspeed.pdf")
+    draw_figure(sit,json,device,"dspeed",torch.tensor([0.8,1.2],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dspeed.pdf")
+    json = read_json.Situation.from_json(args.json)
+    draw_figure(sit,json,device,"dt1",torch.tensor([-60,60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dt1.pdf")
+    json = read_json.Situation.from_json(args.json)
+    draw_figure(sit,json,device,"dt0",torch.tensor([-60,60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dt0.pdf")
+    json = read_json.Situation.from_json(args.json)
+    draw_figure(sit,json,device,"dangle",torch.tensor([-dev,dev],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dangle.pdf")
 
 def explore():
     import warnings

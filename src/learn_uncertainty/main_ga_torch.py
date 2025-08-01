@@ -23,7 +23,7 @@ fname = "/disk2/jsonKimdebugBeacons/all_800_10_1800_2.dsituation"
 #fname = "/disk2/jsonKimdebugBeacons/situations_800_120_120_10_1800/2201/34330127_1643280923_1643281399.situation"
 DSITUATION = fit_traj.load_situation(fname)
 print(list(DSITUATION.keys()))
-DSITUATION = {10:DSITUATION[10][:100]}
+DSITUATION = {10:DSITUATION[10][:400]}
 modelDistance = distance.GenerateDistance.from_dsituation_step(DSITUATION,step=5)
 modelDistance = modelDistance.to(DEVICE)
 
@@ -219,7 +219,7 @@ num_genes = len(param_names)
 parent_selection_type = "rws"
 
 ga_instance = pygad.GA(
-    num_generations=100,
+    num_generations=10,
     on_start=on_start,
     random_seed=42,
     num_parents_mating=int(sol_per_pop*0.8),

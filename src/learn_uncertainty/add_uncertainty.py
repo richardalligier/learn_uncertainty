@@ -244,8 +244,8 @@ class Uncertainty_model:
         "deviated":{
             "fxy": {
                 cls.DANGLE: timesofinterest,
-                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x,"tturn":lambda x:x-50}),
-                cls.DT1: modify(timesofinterest,{"tturn":lambda x:x-50}),
+                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x,"tturn":lambda x:x-60}),
+                cls.DT1: modify(timesofinterest,{"tturn":lambda x:x-60}),
                 cls.DSPEED: timesofinterest,
             }
         },
