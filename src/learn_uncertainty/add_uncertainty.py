@@ -223,8 +223,8 @@ class Uncertainty_model:
         # print(f"{fdeviated.beacon=}")
         # print("newunc")
         ljob_xy = [
-            lambda f:uncertainty.addangle(uxy[cls.DANGLE],dixy[cls.DANGLE]["tdeviation"],dixy[cls.DANGLE]["tturn"],dixy[cls.DANGLE]["trejoin"],f,beacon=fdeviated.beacon),
             lambda f:uncertainty.adddt_rotate(uxy[cls.DT0],dixy[cls.DT0]["tdeviation"],dixy[cls.DT0]["tturn"],dixy[cls.DT0]["trejoin"],f,beacon=fdeviated.beacon),
+            lambda f:uncertainty.addangle(uxy[cls.DANGLE],dixy[cls.DANGLE]["tdeviation"],dixy[cls.DANGLE]["tturn"],dixy[cls.DANGLE]["trejoin"],f,beacon=fdeviated.beacon),
             lambda f:uncertainty.adddt_rotate(uxy[cls.DT1],dixy[cls.DT1]["tturn"],dixy[cls.DT1]["tturn"],dixy[cls.DT1]["trejoin"],f,beacon=fdeviated.beacon),
             lambda f:uncertainty.changespeed_rotate(uxy[cls.DSPEED],dixy[cls.DSPEED]["tdeviation"],dixy[cls.DSPEED]["tturn"],dixy[cls.DSPEED]["trejoin"],f,beacon=fdeviated.beacon),
         ]
@@ -244,7 +244,7 @@ class Uncertainty_model:
         "deviated":{
             "fxy": {
                 cls.DANGLE: timesofinterest,
-                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x,"tturn":lambda x:x-60}),
+                cls.DT0: modify(timesofinterest,{"tdeviation":lambda x:x}),#"tturn":lambda x:x-60}),
                 cls.DT1: modify(timesofinterest,{"tturn":lambda x:x-60}),
                 cls.DSPEED: timesofinterest,
             }
@@ -341,6 +341,8 @@ class Add_uncertainty(nn.Module):
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         xy_u = {k:apply_mask(s.generate_xy(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
         z_u = {k:apply_mask(s.generate_z(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
+        xy_u = {k:s.generate_xy(self.t) for k,s in f_u.items()}
+        z_u = {k:s.generate_z(self.t) for k,s in f_u.items()}
         assert("fz" not in list(uparams["deviated"]))
         dist_z= distz(*minmax(z_u["others"],list(uparams["others"]["fz"].keys())),
                       z_u["deviated"],z_u["deviated"])

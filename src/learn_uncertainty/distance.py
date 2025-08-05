@@ -62,6 +62,9 @@ class GenerateDistance(nn.Module):
             l_id = []
             l_tzero = []
             for add in tqdm.tqdm(self.ladd):
+                # print(add.sit_uncertainty["deviated"].sitf.fid)
+                # print(add.sit_uncertainty["deviated"].sitf.tzero)
+                # print(add.sit_uncertainty["deviated"].sitf.tdeviation)
             # for add in tqdm.tqdm(ladd):
                 #print(i,torch.cuda.memory_allocated()/1024/1024)
                 torch.cuda.empty_cache()

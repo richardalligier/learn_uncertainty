@@ -17,6 +17,7 @@ from collections import namedtuple
 
 class NoAlignedAfter(Exception):pass
 class NoAlignedBefore(Exception):pass
+class TcpaAfterEndofAlignmentAfter(Exception):pass
 
 import warnings
 warnings.simplefilter(action='ignore', category=DeprecationWarning)
@@ -544,6 +545,10 @@ def compute_alignments(sit,t_zero_situation,device):
     # print(len(aligned_after))
     aligned_after = aligned_after[0]
     after = Alignment.from_aligned(aligned_after,t_zero_situation,dbeacons,device)
+    itcpa = sit.deviated.predicted_pairwise.lateral_dist_at_tcpa.values.argmin()
+    tcpa = sit.deviated.predicted_pairwise.time_at_cpa.values[itcpa]- t_zero_situation
+    if after.tend.item() < tcpa:
+        raise TcpaAfterEndofAlignmentAfter
     if DEBUG:
         print(dbeacons[aligned_after.navaid.iloc[0]].name)
         raise Exception
@@ -777,7 +782,7 @@ def main():
     try:
         fdeviated,fothers = convert_situation_to_flights(sit,initialize,device,thresh_xy=THRESH_XY_MODEL*0.99,thresh_z=THRESH_Z_MODEL * 0.99)
         save_situation({"deviated":fdeviated,"others":fothers},args.situation)
-    except (NoAlignedAfter,NoAlignedBefore) as e:
+    except (NoAlignedAfter,NoAlignedBefore,TcpaAfterEndofAlignmentAfter) as e:
         print(type(e))
         save_situation(e,args.situation)
 

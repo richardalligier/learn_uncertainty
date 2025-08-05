@@ -22,7 +22,7 @@ NAME_SIT_RAW = situations_$(THRESH_ALT)_$(KEEP_DURATION_LONGER_THAN)
 
 FOLDER_SIT_RAW = $(FOLDER)/$(NAME_SIT_RAW)
 
-FOLDER_SIT = $(FOLDER)/$(NAME_SIT_RAW)_$(KEEP_DURATION_LONGER_THAN)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)
+FOLDER_SIT = $(FOLDER)/$(NAME_SIT_RAW)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)
 
 # FILES = $(shell cd $(FOLDER_JSON);  ls *.json)
 FILES = $(shell cd $(FOLDER_JSON);  find -type f,l | grep .json$ | cut -c 3-)
@@ -37,6 +37,18 @@ TARGET_FILE = $(FOLDER)/all_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)_$(NS
 
 
 all: $(TARGET_FILE)
+
+figuresdeviated:
+	python3 figures.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
+
+
+figuresothers:
+	python3 figures_others_vertical.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
+	python3 figures_others.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
+	# python3 figures_others.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2202/35436110_1647850652_1647850928.situation -json /disk2/jsonKimdebugBeacons/json/2202/35436110_1647850652_1647850928.json
+
+analyse:
+	python3 analyse_uncertainty.py -statscsv ./stats.csv
 
 select:
 	python3 select_situations.py -jsonfolderin $(FOLDER_ALLJSON) -jsonfolderout $(FOLDER_JSON) -keep_duration_longer_than $(KEEP_DURATION_LONGER_THAN)

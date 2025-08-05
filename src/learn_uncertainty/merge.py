@@ -1,5 +1,5 @@
 import os
-from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict, Alignment,donothing,NoAlignedAfter,NoAlignedBefore
+from fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict, Alignment,donothing,NoAlignedAfter,NoAlignedBefore,TcpaAfterEndofAlignmentAfter
 import add_uncertainty
 import torch
 from torchtraj import named
