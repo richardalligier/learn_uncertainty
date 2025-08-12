@@ -28,12 +28,13 @@ class MyDataParallel(DataParallel):
         return [torchtraj.utils.to(module.clone(),device) for device in device_ids]
 
 class GenerateDistance(nn.Module):
-    def __init__(self,ladd,device):
+    def __init__(self,ladd,device,thresh_z):
         super().__init__()
         self.device = device
         self.ladd = ladd
+        self.thresh_z =thresh_z
     @classmethod
-    def from_dsituation_step(cls,dsituation,step):
+    def from_dsituation_step(cls,dsituation,step,thresh_z):
         print("formatting traj data started")
         ladd=[]
         # dsituation ={10:dsituation[10][:10]}
@@ -46,7 +47,7 @@ class GenerateDistance(nn.Module):
         # raise Exception
         print("formatting traj data done")
         ladd = ladd
-        return cls(ladd,device=None)
+        return cls(ladd,device=None,thresh_z=thresh_z)
     def forward(self,dargs):
         for x in dargs.values():
             assert(x.dim()<=2)
@@ -71,7 +72,7 @@ class GenerateDistance(nn.Module):
                 # print(i,torch.cuda.memory_allocated()/1024/1024)
                 #torchtraj.utils.to(add,self.device)
                 # print(i,torch.cuda.memory_allocated()/1024/1024)
-                l_min_xy.append(add.compute_min_distance_xy_on_conflicting_z(dargs,thresh_z=800))
+                l_min_xy.append(add.compute_min_distance_xy_on_conflicting_z(dargs,thresh_z=self.thresh_z))
                 l_id.append(add.sit_uncertainty["deviated"].sitf.fid)
                 l_tzero.append(add.sit_uncertainty["deviated"].sitf.tzero)
                 # torchtraj.utils.to(add,"cpu")
@@ -85,7 +86,7 @@ class GenerateDistance(nn.Module):
         # print(self.ladd)
         return self
     def clone(self):
-        clone = GenerateDistance(ladd=torchtraj.utils.clone(self.ladd),device=self.device)
+        clone = GenerateDistance(ladd=torchtraj.utils.clone(self.ladd),device=self.device,thresh_z=self.thresh_z)
         return clone
 # def generate_distance_function(dsituation,step):
 #     # dsituationvalues = [{k:v for k,v in s.items()} for s in dsituationvalues]#[:1]

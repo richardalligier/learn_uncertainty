@@ -10,7 +10,11 @@ import os
 
 params_names = [
     'dangleI', #'dangleS',
-    'dt0I', 'dt0S', 'dt1I', 'dt1S','dspeedI', 'dspeedS', 'ldspeedI', 'ldspeedS','vspeedI','vspeedS']
+    'dt0I', 'dt0S',
+    'dt1I', 'dt1S',
+    'dspeedI', 'dspeedS',
+    #'ldspeedI', 'ldspeedS',
+    'vspeedI','vspeedS']
 to_meters = 1852
 #*** Learn uncertainty parameters ***#
 
@@ -18,17 +22,53 @@ DEVICE = torch.device("cuda")
 DTYPE = torch.float32
 config = read_config()
 print(config)
-fname = os.path.join(config.FOLDER,"all_800_10_1800_2.dsituation")
+#fname = os.path.join(config.FOLDER,"all_800_1.dsituation")
+fname = os.path.join(config.FOLDER,"all_800_10_1800_1.dsituation")
 #fname = "/disk2/jsonKimdebugBeacons/situations_800_120_120_10_1800/2201/34330127_1643280923_1643281399.situation"
 DSITUATION = fit_traj.load_situation(fname)
 print(list(DSITUATION.keys()))
-#DSITUATION = {10:DSITUATION[10][:2]}
-DSITUATION = {10:DSITUATION[10][:400]}
+def select_sit(d,iselect):
+    i=-1
+    for k,v in d.items():
+        for vi in v:
+            i+=1
+            if i==iselect:
+                return {k:[vi]}
+    raise Exception(f"{iselect}-th Not Found")
+#print(DSITUATION.values())
+FID = np.concat([vi["deviated"].fid.numpy() for v in DSITUATION.values() for vi in v])
+def select_sit_fid(d,iselect):
+    i=-1
+    for k,v in d.items():
+        for vi in v:
+            i+=1
+            #print(FID[i])
+            if FID[i]==iselect:
+                return {k:[vi]}
+    raise Exception(f"FID {iselect} Not Found")
+
+#DSITUATION = select_sit_fid(DSITUATION,39864916)
+#DSITUATION = select_sit(DSITUATION,3140)
+
+
+#DSITUATION = {k:v for k,v in DSITUATION.items() if k<20}
+#DSITUATION = {10:DSITUATION[10][178:179]}
+#DSITUATION = {10:DSITUATION[10][:400]}
+#DSITUATION = {10:DSITUATION[10][6913:6914]}
+#DSITUATION = {10:DSITUATION[10][6046:6047]}
+#DSITUATION = {10:DSITUATION[10][6533:6534]}
+
+#153 178 398 6046
+
 FID = np.concat([vi["deviated"].fid.numpy() for v in DSITUATION.values() for vi in v])
 TDEVIATION = np.concat([vi["deviated"].tzero.numpy()+vi["deviated"].tdeviation.numpy().astype(np.int64) for v in DSITUATION.values() for vi in v])
+print(FID)
+print(TDEVIATION)
 DIST_MIN_ACTUAL = np.concat([vi["deviated"].actual_min_dist.numpy() for v in DSITUATION.values() for vi in v])
 
-modelDistance = distance.GenerateDistance.from_dsituation_step(DSITUATION,step=5)
+print(list(filter(lambda k: 6.687<k[1]<6.689,enumerate(DIST_MIN_ACTUAL))))
+#raise Exception
+modelDistance = distance.GenerateDistance.from_dsituation_step(DSITUATION,step=5,thresh_z=800)
 modelDistance = modelDistance.to(DEVICE)
 
 
@@ -42,17 +82,17 @@ modelDistance = modelDistance.to(DEVICE)
 #            'vspeedI','vspeedS']
 
 param_bounds = {
-    'dangleI': (np.radians(-10), 0),
-    'dangleS': (0,np.radians(10)),
-    'dt0I': (-30, 0),
-    'dt0S': (0, 60),
-    'dt1I': (-30, 0),
+    'dangleI': (np.radians(-4), 0),
+    'dangleS': (0,np.radians(4)),
+    'dt0I': (-60, 0),
+    'dt0S': (0, 160),
+    'dt1I': (-120, 0),
     'dt1S': (0, 60),
-    'dspeedI': (0.8, 1.),
-    'dspeedS': (1., 1.2),
-    'ldspeedI': (0.8, 1.),
-    'ldspeedS': (1., 1.2),
-    'vspeedI': (0.8, 1),
+    'dspeedI': (0.95, 1.),
+    'dspeedS': (1., 1.05),
+    'ldspeedI': (0.95, 1.),
+    'ldspeedS': (1., 1.05),
+    'vspeedI': (0.7, 1),
     'vspeedS': (1, 1.2),
 }
 
@@ -76,26 +116,45 @@ gene_space = [
 def decode_solution(solution):
     return {name: solution[i] for i, name in enumerate(params_names)}
 
-def compute_scores(metric,tau,clip_dist,d):
+def compute_scores(metric,tau,clip_dist,nd,d):
     assert(0<=tau<=1)
+    print(d.shape)
+    def compute_e(d):
+        assert(isinstance(nd,bool))
+        print(f"{nd=}")
+        if nd is True:
+            return d-torch.mean(d,dim=-1,keepdim=True)
+        else:
+            return d-5
     if metric == "square":
-        return ((d-5)**2).mean(axis=-1)
+        if clip_dist is not None:
+            d = torch.clip(d,max=clip_dist)
+        e = compute_e(d)#d-nd
+        epos = torch.clip(e,min=0)**2
+        eneg = torch.clip(e,max=0)**2
+        return 2*(tau * epos + (1-tau) * eneg).mean(axis=-1)
     elif metric == "abs":
         if clip_dist is not None:
             d = torch.clip(d,max=clip_dist)
-        e = d-5
+        e = compute_e(d)#d-nd
         epos = torch.clip(e,min=0)
         eneg = torch.clip(e,max=0)
-        return (tau * epos - (1-tau) * eneg).mean(axis=-1)
+        return 2*(tau * epos - (1-tau) * eneg).mean(axis=-1)
     else:
         raise Exception
+
+def fitness_from_score(score):
+    return 1/(1+score)
+def score_from_fitness(fit):
+    return 1/fit-1
 
 def prepare_dparams(sols):
     dangle = [[params['dangleI'],-params['dangleI']] for params in sols]
     dt0 = [[params['dt0I'],params['dt0S']] for params in sols]
     dt1 = [[params['dt1I'],params['dt1S']] for params in sols]
     dspeed = [[params['dspeedI'],params['dspeedS']] for params in sols]
-    ldspeed = [[params['ldspeedI'],params['ldspeedS']] for params in sols]
+    ldspeed = [[params['dspeedI'],params['dspeedS']] for params in sols]
+    # ldspeed = [[params['ldspeedI'],params['ldspeedS']] for params in sols]
     vspeed = [[params['vspeedI'],params['vspeedS']] for params in sols]
     duparams = {
         "dangle": torch.tensor(dangle,dtype=DTYPE),
@@ -105,10 +164,17 @@ def prepare_dparams(sols):
         "ldspeed": torch.tensor(ldspeed,dtype=DTYPE),
         "vspeed": torch.tensor(vspeed,dtype=DTYPE),
     }
+    duparams = {k:v.to(DEVICE) for k,v in duparams.items()}
+    # print(nd)
+    # print(nd.shape)
+    # print(duparams["dangle"].shape)
+    # raise Exception
     return duparams
 def fitness_func(ga_instance,population,population_indices):
     print(f"{len(population)=}")
     print(f"{min(population_indices)=}")
+    # print(population)
+    # raise Exception
     #print(population)
     # if ga_instance.mylastpop is not None:
     #     print(ga_instance.mylastpop[population_indices]==population)
@@ -121,7 +187,6 @@ def fitness_func(ga_instance,population,population_indices):
     # for k in ["dspeed","ldspeed", "vspeed"]:
     #     duparams[k]=torch.ones_like(duparams["dt0"])
     # print(duparams)
-    duparams = {k:v.to(DEVICE) for k,v in duparams.items()}
     # st = time.perf_counter()
     d,lid,ltzero = modelDistance(duparams)
     d = d.cpu()
@@ -137,12 +202,14 @@ def fitness_func(ga_instance,population,population_indices):
     #     scores = (d-5).abs().mean(axis=-1)
     # else:
     #     raise Exception
-    scores = compute_scores(ga_instance.metric,ga_instance.my_args.tau,ga_instance.my_args.clip_dist,d)
+    scores = compute_scores(ga_instance.metric,ga_instance.my_args.tau,ga_instance.my_args.clip_dist,ga_instance.my_args.nd,d)
+    assert(len(scores.shape)==1)
+    assert(scores.shape[0]==len(population))
     # ga_instance.metric_ibest = i
     # print(i)
     # print(d[i].min(),d[i].mean(),d[i].max(),np.var(d[i].numpy()))
     # print(np.mean((d[i]-5).abs().numpy()),np.var((d[i]-5).abs().numpy()))
-    fits = 1 / (1 + scores)
+    fits = fitness_from_score(scores)#1 / (1 + scores)
     if ga_instance.mybest_fitness is None or ga_instance.mybest_fitness<fits.rename(None).max().item():
         ibest = fits.rename(None).argmax()
         ga_instance.mybest_sol= population[ibest].copy()
@@ -257,7 +324,8 @@ def on_crossover(ga_instance, offspring_crossover):
 
 def on_generation(ga_instance):
     print("on_generation")
-    print(f"Génération {ga_instance.generations_completed} : Meilleure fitness = {ga_instance.mybest_fitness}")
+    score = score_from_fitness(ga_instance.mybest_fitness)
+    print(f"Génération {ga_instance.generations_completed} : Meilleure fitness = {ga_instance.mybest_fitness} score: {score}")
     print(f" Meilleur individu : {ga_instance.mybest_sol}")
     print(ga_instance.generations_completed)
     sep = ","
@@ -296,24 +364,34 @@ def main():
     parser = argparse.ArgumentParser(
         description='EA',
     )
+    def convert(x):
+        if x=="False":
+            return False
+        elif x=="True":
+            return True
+        else:
+            raise Exception
     parser.add_argument("-csv",default= "stats.csv")
     parser.add_argument("-num_generations",type=int,default= 50)
     parser.add_argument("-random_seed",type=int,default= 42)
     parser.add_argument("-sol_per_pop",type=int,default= 100)
-    parser.add_argument("-ratio_num_parents_mating",type=float,default= 0.9)
+    parser.add_argument("-ratio_num_parents_mating",type=float,default= 0.87)
     parser.add_argument("-K_tournament",type=int,default= 2)
-    parser.add_argument("-crossover_probability",type=float,default= 1.)
-    parser.add_argument("-mutation_probability",type=float,default= 1.)
+    parser.add_argument("-crossover_probability",type=float,default= 0.87)
+    parser.add_argument("-mutation_probability",type=float,default= 0.81)
     parser.add_argument("-mutation_type",type=str,default= "uniform")
-    parser.add_argument("-scale_mutation",type=float,default= 0.1)
+    parser.add_argument("-scale_mutation",type=float,default= 0.16)
     parser.add_argument("-parent_selection_type",type=str,default="tournament")
-    parser.add_argument("-metric",type=str,default="abs")
-    parser.add_argument("-tau",type=float,default=0.2)
-    parser.add_argument("-clip_dist",type=float,default=20)
+    parser.add_argument("-metric",type=str,default="square")
+    parser.add_argument("-tau",type=float,default=0.5)
+    parser.add_argument("-clip_dist",type=float,default=10)
+    parser.add_argument("-nd",type=convert,default=True)
     # parser.add_argument("-prob_crossover",type=float,default=0)#0.55)
     args = parser.parse_args()
     assert(args.metric in ["square","abs"])
     num_genes = len(params_names)
+    np.random.seed(args.random_seed)
+    random.seed(args.random_seed)
     ga_instance = pygad.GA(
         num_generations=args.num_generations,
         on_start=on_start,
@@ -328,7 +406,7 @@ def main():
         sol_per_pop=args.sol_per_pop,
         parent_selection_type=args.parent_selection_type,
         K_tournament = args.K_tournament,
-        fitness_batch_size=min(args.sol_per_pop,100),
+        fitness_batch_size=min(args.sol_per_pop,300),
         keep_elitism=1,
         num_genes=num_genes,
         gene_space=gene_space,

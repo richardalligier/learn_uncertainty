@@ -36,8 +36,8 @@ def keep_closest(sit, nclosest,thresh_z):
     # print("add.masked_t")
     # print(torch.any(add.masked_t["others"].rename(None)==1,axis=-1))
     # raise Exception
-    # dist = named.nanamin(apply_mask(dist_xy,conflict_z/conflict_z),dim=(T,))
-    dist = named.nanamin(dist_xy,dim=(T,))
+    dist = named.nanamin(apply_mask(dist_xy,conflict_z/conflict_z),dim=(T,))
+    #dist = named.nanamin(dist_xy,dim=(T,))
     assert(dist.names[-1] == SITUATION)
     dist = dist[:,0]
     assert(dist.names == (OTHERS,))

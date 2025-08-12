@@ -214,8 +214,8 @@ class SituationDeviated(SituationOthers):
     @property
     def beacon(self):
         return self.align_after.beacon
-    def generate_trange_conflict(self,step):
-        max_duration = (self.trejoin - self.tdeviation).max().item()
+    def generate_trange_conflict(self,step,tlimit=20*60):
+        max_duration = min((self.trejoin - self.tdeviation).max().item(),20*60)
         tfromzero = torch.arange(start=0,end=max_duration,step=step,dtype=self.tturn.dtype,device=self.tturn.device).rename(T)
         res = op.add(*named.align_common(self.tdeviation,tfromzero))
         # print((self.tdeviation+self.tzero)[0].item())

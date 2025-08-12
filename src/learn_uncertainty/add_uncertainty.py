@@ -15,6 +15,7 @@ from torchtraj.qhull import QhullDist
 from torch import nn
 
 VALUESTOTEST = "valuestotest"
+NO_MORE_CRUISE_FOR_DEVIATED_FT = 200
 
 def plotanimate(lxy,xlabel,ylabel,s=1.5,margin=20.,equal=True):
     fig,ax = plt.subplots() # initialise la figure
@@ -325,7 +326,7 @@ class Add_uncertainty(nn.Module):
             "capmem":capmem,
             "umodel": umodel,
             "t" : t,
-            "masked_t" : {k:s.generate_mask(t,thresh=20) for k,s in sit.items()},
+            "masked_t" : {k:s.generate_mask(t,thresh=thresh_thole) for k,s in sit.items()},
             "sit_uncertainty" : umodel.precompute_situation_uncertainty(sit),
             "qhulldist" : QhullDist.from_device_n(n=dist_discretize,device=t.device)
          }
@@ -341,8 +342,14 @@ class Add_uncertainty(nn.Module):
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         xy_u = {k:apply_mask(s.generate_xy(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
         z_u = {k:apply_mask(s.generate_z(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
-        xy_u = {k:s.generate_xy(self.t) for k,s in f_u.items()}
-        z_u = {k:s.generate_z(self.t) for k,s in f_u.items()}
+        assert(z_u["deviated"].names[-1]==T)
+        z_u0 = torch.round(z_u["deviated"][...,0]/1000)*1000
+        mask_constantFL = torch.abs(z_u["deviated"]-z_u0.align_as(z_u["deviated"]))<NO_MORE_CRUISE_FOR_DEVIATED_FT
+        z_u["deviated"]=apply_mask(z_u["deviated"],mask=mask_constantFL/mask_constantFL)
+        # print(z_u)
+        # raise Exception
+        # xy_u = {k:s.generate_xy(self.t) for k,s in f_u.items()}
+        # z_u = {k:s.generate_z(self.t) for k,s in f_u.items()}
         assert("fz" not in list(uparams["deviated"]))
         dist_z= distz(*minmax(z_u["others"],list(uparams["others"]["fz"].keys())),
                       z_u["deviated"],z_u["deviated"])

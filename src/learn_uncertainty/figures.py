@@ -11,6 +11,7 @@ from learn_uncertainty import read_json
 from torchtraj.utils import T, XY,WPTS, apply_mask
 from learn_uncertainty.add_uncertainty import VALUESTOTEST, Add_uncertainty
 import matplotlib.lines as mlines
+from torchtraj import named
 
 UNITDIST = 1852
 LINEWIDTH_TARGET = 0.7
@@ -43,7 +44,7 @@ def get_original_uparams(device):
     }
     return uparams
 def draw_deviated(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotated =False,fname=None):
-    add = Add_uncertainty.from_sit_step(sit,step=5)
+    add = Add_uncertainty.from_sit_step(sit,step=5,thresh_thole=20)
     # print(add.t.min())
     # raise Exception
     uparams = get_original_uparams(device)
@@ -60,7 +61,42 @@ def draw_deviated(sit,json,device,uparam,uncertainty_value,all_beacons=True,rota
     #     "vspeed": torch.tensor([0.8584289297070437,1.0732723686587384],device=device).rename(VALUESTOTEST),
     # }
     dist_xy,dist_z,dxy_u,z_u = add.compute_all(uparams)
+    d = add.compute_min_distance_xy_on_conflicting_z(uparams,thresh_z=200)
+    print(add.t.to(torch.int64))
+    print(add.t.to(torch.int64)+add.sit_uncertainty["deviated"].sitf.tzero.item())
+    print(add.masked_t)#+add.sit_uncertainty["deviated"].sitf.tzero.item())
+    print(d/UNITDIST,add.sit_uncertainty["deviated"].sitf.actual_min_dist.item())
     # raise Exception
+    print(add.sit_uncertainty["others"].sitf.fid)
+    # raise Exception
+    print((d.item()==dist_xy).sum(dim=(0,1))*(add.t.to(torch.int64)+add.sit_uncertainty["deviated"].sitf.tzero.item()))
+    print((d.item()==dist_xy).sum(dim=(1,2))*add.sit_uncertainty["others"].sitf.fid)
+    print(dist_xy.names)
+    print(((d.item()==dist_xy).sum(dim=(1,2)).align_as(dist_xy)*dist_xy/UNITDIST).sum(dim=0))
+    print(((d.item()==dist_xy).sum(dim=(1,2)).align_as(dist_xy)*dist_z).sum(dim=0))
+    print(d.item()==dist_xy)
+    res = add.masked_t["others"].clone().rename(None)
+    res[torch.isnan(add.masked_t["others"]).rename(None)]= 0
+    res = res.rename(*add.masked_t["others"].names)
+    print(res)
+    whichfid=(d.item()==dist_xy).sum(dim=(1,2)).rename(None)
+    i= (whichfid * torch.arange(whichfid.shape[0])).sum().item()
+    print((res*add.t)[i].to(torch.int64)+add.sit_uncertainty["deviated"].sitf.tzero.item())
+    print(dist_xy.names)
+    print(dist_xy[i]/UNITDIST)
+    print(dist_z[i])
+    print(z_u["others"][i])
+    print(z_u["deviated"])
+    print(add.masked_t["others"])
+    print(add.sit_uncertainty["deviated"].sitf.tzero.item())
+    print(add.sit_uncertainty["others"].sitf.tzero.item())
+    print(add.sit_uncertainty["others"].sitf.t[:,i])
+    print(add.sit_uncertainty["others"].sitf.fid[:,i])
+    raise Exception
+    print(add.sit_uncertainty["deviated"].sitf.tzero.item()+named.nanamax(add.masked_t["others"][i]*(add.t),dim=(T,)).to(torch.int64))
+    print(dxy_u["deviated"]/UNITDIST)
+    print(apply_mask(dxy_u["others"],add.masked_t["others"]).align_to(OTHERS,...)[i]/UNITDIST)
+    raise Exception
     xy_u = dxy_u["deviated"]
     tz_u = add.compute_tz(uparams)
     # print(add.compute_min_distance_xy_on_conflicting_z(uparams,thresh_z=800))
@@ -382,7 +418,8 @@ def main():
     # draw_figure(sit,json,device,"dt1",torch.tensor([-60,60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True)
     # draw_figure(sit,json,device,"dt0",torch.tensor([-30,60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True)
     json = read_json.Situation.from_json(args.json)
-    draw_deviated(sit,json,device,"dt0",torch.tensor([-60, 60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dt0.pdf")
+    draw_deviated(sit,json,device,"dt0",torch.tensor([0],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dt0.pdf")
+    # draw_deviated(sit,json,device,"dt0",torch.tensor([-60, 60],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dt0.pdf")
     # raise Exception
     json = read_json.Situation.from_json(args.json)
     draw_deviated(sit,json,device,"dspeed",torch.tensor([0.8,1.2],device=device).rename(VALUESTOTEST),all_beacons=False,rotated=True,fname="./figures/dspeed.pdf")

@@ -146,7 +146,7 @@ def draw_others(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
     plt.setp(plt.gca().get_xticklabels(), rotation=0, va="top", ha="center")
     plt.setp(plt.gca().get_yticklabels(), rotation=0, va="center", ha="right")
     xlab = "t [s]"
-    ylab = "z [ft]"
+    ylab = "altitude [ft]"
     xlab,ylab = couple_swap((xlab,ylab))
     plt.xlabel(xlab)
     plt.ylabel(ylab)
@@ -162,7 +162,7 @@ def draw_others(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
                )
     if fname is not None:
         fig.set_tight_layout({'pad':0})
-        fig.set_figwidth(8)
+        fig.set_figwidth(5)
         plt.savefig(fname, dpi=300, bbox_inches='tight')
     else:
         plt.show()

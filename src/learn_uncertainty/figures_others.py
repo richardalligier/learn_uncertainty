@@ -167,7 +167,7 @@ def draw_others(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
                )
     if fname is not None:
         fig.set_tight_layout({'pad':0})
-        fig.set_figwidth(8)
+        fig.set_figwidth(5)
         plt.savefig(fname, dpi=300, bbox_inches='tight')
     else:
         plt.show()

@@ -7,10 +7,10 @@ include CONFIG
 # FOLDER_JSON = ./jsonsmall
 #FOLDER_JSON = ./july_test_2
 
-THRESH_ALT= 800
-NCLOSEST = 10
-THRESH_ALT_CLOSEST= 1800
-NSITUATION_MAX = 2
+THRESH_ALT= 2800
+NCLOSEST = 15
+THRESH_ALT_CLOSEST= 800
+NSITUATION_MAX = 1
 
 KEEP_DURATION_LONGER_THAN = 120
 
@@ -30,13 +30,21 @@ FILES = $(shell cd $(FOLDER_JSON);  find -type f,l | grep .json$ | cut -c 3-)
 
 FILES_SIT = $(foreach f, $(FILES), $(FOLDER_SIT)/$(f:.json=.situation))
 
+FILES_SIT_RAW = $(foreach f, $(FILES), $(FOLDER_SIT_RAW)/$(f:.json=.situation))
+
 #FILES_SIT = $(foreach f, $(FILES), $(FOLDER_SIT)/$(f:.json=.situation))
 
 
-TARGET_FILE = $(FOLDER)/all_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)_$(NSITUATION_MAX).dsituation
+TARGET_FILE_LIMIT = $(FOLDER)/all_$(THRESH_ALT)_$(NCLOSEST)_$(THRESH_ALT_CLOSEST)_$(NSITUATION_MAX).dsituation
+
+TARGET_FILE = $(FOLDER)/all_$(THRESH_ALT)_$(NSITUATION_MAX).dsituation
 
 
-all: $(TARGET_FILE)
+all: $(TARGET_FILE_LIMIT)
+
+
+figuresconvex:
+	python3 figures_convex.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
 
 figuresdeviated:
 	python3 figures.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
@@ -48,7 +56,9 @@ figuresothers:
 	# python3 figures_others.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2202/35436110_1647850652_1647850928.situation -json /disk2/jsonKimdebugBeacons/json/2202/35436110_1647850652_1647850928.json
 
 analyse:
-	python3 analyse_uncertainty.py -statscsv ./stats.csv
+	python3 analyse_uncertainty.py -statscsv stats/statsnond.csv
+#/stats10.csv
+#./stats/stats2.csv
 
 select:
 	python3 select_situations.py -jsonfolderin $(FOLDER_ALLJSON) -jsonfolderout $(FOLDER_JSON) -keep_duration_longer_than $(KEEP_DURATION_LONGER_THAN)
@@ -63,5 +73,7 @@ $(FOLDER_SIT_RAW)/%.situation: $(FOLDER_JSON)/%.json
 	mkdir -p $(dir $@)
 	python3	fit_traj.py -json $< -situation $@ -cutalt $(THRESH_ALT)
 
-$(TARGET_FILE): $(FILES_SIT)
+$(TARGET_FILE): $(FILES_SIT_RAW)
+	python3 merge.py -situationsfolder $(FOLDER_SIT_RAW) -dsituation $@  -nsituation_max $(NSITUATION_MAX)
+$(TARGET_FILE_LIMIT): $(FILES_SIT)
 	python3 merge.py -situationsfolder $(FOLDER_SIT) -dsituation $@  -nsituation_max $(NSITUATION_MAX)
