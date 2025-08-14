@@ -7,8 +7,8 @@ include CONFIG
 # FOLDER_JSON = ./jsonsmall
 #FOLDER_JSON = ./july_test_2
 
-THRESH_ALT= 2800
-NCLOSEST = 15
+THRESH_ALT= 800
+NCLOSEST = 10
 THRESH_ALT_CLOSEST= 800
 NSITUATION_MAX = 1
 
@@ -43,16 +43,17 @@ TARGET_FILE = $(FOLDER)/all_$(THRESH_ALT)_$(NSITUATION_MAX).dsituation
 all: $(TARGET_FILE_LIMIT)
 
 
+
 figuresconvex:
-	python3 figures_convex.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
+	python3 figures_convex.py -situation $(FOLDER_SIT_RAW)/2201/34774398_1645197342_1645197662.situation -json $(FOLDER_JSON)/2201/34774398_1645197342_1645197662.json
 
 figuresdeviated:
-	python3 figures.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
+	python3 figures.py -situation $(FOLDER_SIT_RAW)/2201/34774398_1645197342_1645197662.situation -json $(FOLDER_JSON)/2201/34774398_1645197342_1645197662.json
 
 
 figuresothers:
-	python3 figures_others_vertical.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
-	python3 figures_others.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2201/34774398_1645197342_1645197662.situation -json /disk2/jsonKimdebugBeacons/json/2201/34774398_1645197342_1645197662.json
+	python3 figures_others_vertical.py -situation $(FOLDER_SIT_RAW)/2201/34774398_1645197342_1645197662.situation -json $(FOLDER_JSON)/2201/34774398_1645197342_1645197662.json
+	python3 figures_others.py -situation $(FOLDER_SIT_RAW)/2201/34774398_1645197342_1645197662.situation -json $(FOLDER_JSON)/2201/34774398_1645197342_1645197662.json
 	# python3 figures_others.py -situation /disk2/jsonKimdebugBeacons/situations_800_120/2202/35436110_1647850652_1647850928.situation -json /disk2/jsonKimdebugBeacons/json/2202/35436110_1647850652_1647850928.json
 
 analyse:

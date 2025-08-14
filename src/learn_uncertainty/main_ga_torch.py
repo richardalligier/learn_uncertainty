@@ -3,10 +3,11 @@ import numpy as np
 import random
 import time
 from learn_uncertainty import distance, fit_traj
-from learn_uncertainty.fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict,plot,recplot,scatter_with_number,read_config,Alignment,donothing,NoAlignedAfter,NoAlignedBefore,read_config
+from learn_uncertainty.fit_traj import save_situation, load_situation, SituationDeviated, SituationOthers, SITUATION, OTHERS, deserialize_dict,plot,recplot,scatter_with_number,read_config,Alignment,donothing,NoAlignedAfter,NoAlignedBefore#,read_config
 import torch
 import os
 #*** Algo Gen parameters ***#
+import argparse
 
 params_names = [
     'dangleI', #'dangleS',
@@ -18,15 +19,14 @@ params_names = [
 to_meters = 1852
 #*** Learn uncertainty parameters ***#
 
-DEVICE = torch.device("cuda")
+# DEVICE = torch.device("cuda")
 DTYPE = torch.float32
-config = read_config()
-print(config)
-#fname = os.path.join(config.FOLDER,"all_800_1.dsituation")
-fname = os.path.join(config.FOLDER,"all_800_10_1800_1.dsituation")
+# config = read_config()
+# print(config)
+
 #fname = "/disk2/jsonKimdebugBeacons/situations_800_120_120_10_1800/2201/34330127_1643280923_1643281399.situation"
-DSITUATION = fit_traj.load_situation(fname)
-print(list(DSITUATION.keys()))
+
+
 def select_sit(d,iselect):
     i=-1
     for k,v in d.items():
@@ -36,8 +36,8 @@ def select_sit(d,iselect):
                 return {k:[vi]}
     raise Exception(f"{iselect}-th Not Found")
 #print(DSITUATION.values())
-FID = np.concat([vi["deviated"].fid.numpy() for v in DSITUATION.values() for vi in v])
-def select_sit_fid(d,iselect):
+
+def select_sit_fid(d,FID,iselect):
     i=-1
     for k,v in d.items():
         for vi in v:
@@ -47,7 +47,27 @@ def select_sit_fid(d,iselect):
                 return {k:[vi]}
     raise Exception(f"FID {iselect} Not Found")
 
-#DSITUATION = select_sit_fid(DSITUATION,39864916)
+
+def parser_load_distance():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("-step",type=int,default=5)
+    parser.add_argument("-thresh_conflict_z",type=float,default=800)
+    parser.add_argument("-device",default="cuda")
+    return parser
+
+def load_model_distance(DSITUATION,args):
+    modelDistance = distance.GenerateDistance.from_dsituation_step(DSITUATION,step=args.step,thresh_z=args.thresh_conflict_z)
+    modelDistance = modelDistance.to(args.device)
+    return modelDistance
+
+
+def merge_fid_tdeviation_dist(DSITUATION):
+    FID = np.concat([vi["deviated"].fid.numpy() for v in DSITUATION.values() for vi in v])
+    TDEVIATION = np.concat([vi["deviated"].tzero.numpy()+vi["deviated"].tdeviation.numpy().astype(np.int64) for v in DSITUATION.values() for vi in v])
+    DIST_MIN_ACTUAL = np.concat([vi["deviated"].actual_min_dist.numpy() for v in DSITUATION.values() for vi in v])
+    return argparse.Namespace(fid=FID,tdeviation=TDEVIATION,dist_min_actual=DIST_MIN_ACTUAL)
+
+
 #DSITUATION = select_sit(DSITUATION,3140)
 
 
@@ -60,16 +80,15 @@ def select_sit_fid(d,iselect):
 
 #153 178 398 6046
 
-FID = np.concat([vi["deviated"].fid.numpy() for v in DSITUATION.values() for vi in v])
-TDEVIATION = np.concat([vi["deviated"].tzero.numpy()+vi["deviated"].tdeviation.numpy().astype(np.int64) for v in DSITUATION.values() for vi in v])
-print(FID)
-print(TDEVIATION)
-DIST_MIN_ACTUAL = np.concat([vi["deviated"].actual_min_dist.numpy() for v in DSITUATION.values() for vi in v])
+# FID = np.concat([vi["deviated"].fid.numpy() for v in DSITUATION.values() for vi in v])
 
-print(list(filter(lambda k: 6.687<k[1]<6.689,enumerate(DIST_MIN_ACTUAL))))
+# print(FID)
+# print(TDEVIATION)
+
+
+# print(list(filter(lambda k: 6.687<k[1]<6.689,enumerate(DIST_MIN_ACTUAL))))
 #raise Exception
-modelDistance = distance.GenerateDistance.from_dsituation_step(DSITUATION,step=5,thresh_z=800)
-modelDistance = modelDistance.to(DEVICE)
+
 
 
 # params_names = [
@@ -164,11 +183,6 @@ def prepare_dparams(sols):
         "ldspeed": torch.tensor(ldspeed,dtype=DTYPE),
         "vspeed": torch.tensor(vspeed,dtype=DTYPE),
     }
-    duparams = {k:v.to(DEVICE) for k,v in duparams.items()}
-    # print(nd)
-    # print(nd.shape)
-    # print(duparams["dangle"].shape)
-    # raise Exception
     return duparams
 def fitness_func(ga_instance,population,population_indices):
     print(f"{len(population)=}")
@@ -182,13 +196,14 @@ def fitness_func(ga_instance,population,population_indices):
     sols = [decode_solution(s) for s in population]
     # print(sols)
     duparams = prepare_dparams(sols)
+    duparams = {k:v.to(ga_instance.my_args.device) for k,v in duparams.items()}
     # for k in ["dangle", "dt1"]:
     #     duparams[k]=torch.zeros_like(duparams["dt0"])
     # for k in ["dspeed","ldspeed", "vspeed"]:
     #     duparams[k]=torch.ones_like(duparams["dt0"])
     # print(duparams)
     # st = time.perf_counter()
-    d,lid,ltzero = modelDistance(duparams)
+    d,lid,ltzero = ga_instance.modelDistance(duparams)
     d = d.cpu()
     ga_instance.metric_dist[population_indices] = d
     # nbsituations = d.shape[1]
@@ -342,9 +357,9 @@ def on_generation(ga_instance):
     imax = np.argmax(ga_instance.mybest_dist)
     for (what,i) in [("min",imin),("max",imax)]:
         res[f"best{what}_dist"]=ga_instance.mybest_dist[i]
-        res[f"best{what}_actual_dist"]=DIST_MIN_ACTUAL[i]
-        res[f"best{what}_fid"]=FID[i]
-        res[f"best{what}_tdeviation"]=TDEVIATION[i]
+        res[f"best{what}_actual_dist"]=ga_instance.merged.dist_min_actual[i]
+        res[f"best{what}_fid"]=ga_instance.merged.fid[i]
+        res[f"best{what}_tdeviation"]=ga_instance.merged.tdeviation[i]
     if ga_instance.generations_completed==1:
         with open(ga_instance.metric_csv,"w") as file:
             file.write(f"{sep.join(res.keys())}")
@@ -360,9 +375,8 @@ def on_generation(ga_instance):
 # num_parents_mating = 40
 
 def main():
-    import argparse
     parser = argparse.ArgumentParser(
-        description='EA',
+        add_help=False
     )
     def convert(x):
         if x=="False":
@@ -386,8 +400,14 @@ def main():
     parser.add_argument("-tau",type=float,default=0.5)
     parser.add_argument("-clip_dist",type=float,default=10)
     parser.add_argument("-nd",type=convert,default=True)
+    parser.add_argument("-dsituation",required=True)#,default=os.path.join(config.FOLDER,"all_800_10_1800_1old.dsituation"))
+    parent_parser=argparse.ArgumentParser(parents=[parser,parser_load_distance()])
     # parser.add_argument("-prob_crossover",type=float,default=0)#0.55)
-    args = parser.parse_args()
+    args = parent_parser.parse_args()
+    DSITUATION = fit_traj.load_situation(args.dsituation)
+    merged=merge_fid_tdeviation_dist(DSITUATION)
+    DSITUATION = select_sit_fid(DSITUATION,merged.fid,39864916)
+    modelDistance = load_model_distance(DSITUATION,args)
     assert(args.metric in ["square","abs"])
     num_genes = len(params_names)
     np.random.seed(args.random_seed)
@@ -417,11 +437,13 @@ def main():
         #    crossover_type=custom_crossover,
     )
     ga_instance.my_args = args
+    ga_instance.modelDistance = modelDistance
+    ga_instance.merged = merged
     ga_instance.metric = args.metric
     ga_instance.metric_csv = args.csv
     ga_instance.metric_prob_crossover = args.crossover_probability
     ga_instance.metric_prob_mutation = args.mutation_probability
-    ga_instance.metric_dist = np.zeros((args.sol_per_pop,len(FID)),dtype=float)
+    ga_instance.metric_dist = np.zeros((args.sol_per_pop,len(merged.fid)),dtype=float)
     ga_instance.metric_fitness = np.zeros((args.sol_per_pop,),dtype=float)
     ga_instance.mylastpop = np.zeros((args.sol_per_pop,num_genes),dtype=float)
     ga_instance.mybest_sol = None

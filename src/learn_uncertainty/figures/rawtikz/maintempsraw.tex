@@ -1,0 +1,37 @@
+
+    \begin{tikzpicture}
+    % DROITES  
+    \draw[gray, line width=0.1pt] (-1,0)-- (3,2) ;
+    \draw[line width=0.5pt,blue] (-0.5,0.25)-- (1.2,0.25) ;
+    \draw[line width=0.5pt,blue] (1.2,0.25)-- (1.70,0.25) ;
+    \draw[line width=0.5pt,blue] (-1,0)-- (1.75,0) ;  
+    \draw[line width=0.5pt,blue] (1.2,0.25)-- (3,2) ;
+    \draw[line width=0.5pt,blue] (1.70,0.25)-- (3,2) ;
+    \draw[line width=0.5pt,blue] (1.75,0)-- (3,2) ;
+    \draw[line width=0.5pt,blue] (-1,0)-- (-0.5,0.25);
+
+    
+    \draw[line width=1pt]  (-3,-1) -- (-1,0) ;
+    \draw[line width=1pt] (-1,0)-- (1.25,0) ;  
+    \draw[->,>=stealth',semithick,line width=1pt] (1.25,0)-- (3,2) ;
+
+    %\draw[->,>=stealth',semithick]  (0.80,0) arc (0:27:1.8); % coodonnees point A, alpha, beta, rayon 
+
+
+    % POINTS  
+   %\filldraw [gray] (-3,-1)  circle (1.5pt);
+   \filldraw [gray] (-1,0)  circle (1.5pt);
+   \filldraw [gray] (1.25,0)  circle (1.5pt);
+   %\filldraw [gray] (3,2) circle (1.5pt);
+    % NOMS  
+    \draw (-2.85,-1.15) node[scale=0.75,rotate=0]{O};
+    \draw (-1,0.1) node[scale=0.80,rotate=0,left]{{\textit{$\tzero$}}};
+    \draw (-0.40,0.40) node[scale=0.80,rotate=0,text=blue,left]{{\textit{$\tzero + \dtzero{}$}}};
+    \draw (0.70,-0.70) node[scale=0.80,rotate=0]{{\textit{$\tone$}}};
+    \draw (3.15,1.85) node[scale=0.75,rotate=0]{D};
+    \draw (2.3,-0.70) node[scale=0.80,rotate=0,text=blue]{{\textit{$\tone{} + \dtone{}$}}};
+    \draw[->,>=stealth',semithick,densely dotted,line width = 0.1pt] (0.75,-0.5)--(1.25,0) ;
+    \draw[->,>=stealth',semithick,densely dotted,line width = 0.1pt,blue] (0.75,-0.5)--(1.2,0.25) ;
+    \draw[->,>=stealth',semithick,densely dotted,line width = 0.1pt,blue] (2.3,-0.5)--(1.75,0) ;
+    \draw[->,>=stealth',semithick,densely dotted,line width = 0.1pt,blue] (2.3,-0.5)--(1.70,0.25) ;
+    \end{tikzpicture}

@@ -23,6 +23,7 @@ AFTER_MARKER = "1"
 BEACON_MARKER = "2"
 BEFORE_COLOR = "black"
 BEFORE_MARKER = "3"
+T0="t_1"
 class COLOR_UNCER():
     def __init__(self):
         self.cpt = 0
@@ -139,7 +140,7 @@ def draw_others(sit,json,device,uparam,uncertainty_value,all_beacons=True,rotate
     lines[0][0].set_label("modified trajectory")
     lines[1][0].set_label("modified trajectory")
     line=recplot(points["pt0"],lambda x,y:plt.scatter(x/UNITDIST,y/UNITDIST,color="black",s=SIZE_MARKER_TPOINTS))
-    line[0].set_label("position at $t_0$")
+    line[0].set_label(f"position at ${T0}$")
     print(xy_u.shape)
     def simplify(xy):
         tosqueeze = [i for i,(name,s) in enumerate(zip(xy.names,xy.shape)) if name not in [T,XY] and s==1]
