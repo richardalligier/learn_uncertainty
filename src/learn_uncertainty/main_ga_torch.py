@@ -406,6 +406,10 @@ def main():
     args = parent_parser.parse_args()
     DSITUATION = fit_traj.load_situation(args.dsituation)
     merged=merge_fid_tdeviation_dist(DSITUATION)
+    print(len(merged.fid))
+    print(f"{np.mean((np.clip(merged.dist_min_actual,None,a_max=args.clip_dist)-5)**2)=}")
+    print(f"{np.std(np.clip(merged.dist_min_actual,None,a_max=args.clip_dist))**2=}")
+    # raise Exception
     DSITUATION = select_sit_fid(DSITUATION,merged.fid,39864916)
     modelDistance = load_model_distance(DSITUATION,args)
     assert(args.metric in ["square","abs"])

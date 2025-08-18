@@ -13,6 +13,7 @@ from learn_uncertainty.add_uncertainty import VALUESTOTEST, Add_uncertainty
 import matplotlib.lines as mlines
 import main_ga_torch
 import glob
+import fit_traj
 
 def get_original_uparams(device):
     uparams = {
@@ -50,10 +51,16 @@ def hist_distance(d,fname=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='fit trajectories and save them in folders',
+        description='fit trajectories and save them in folders',add_help=False
     )
+    parser.add_argument("-dsituation",required=True)
     parser.add_argument('-statscsv')
-    args = parser.parse_args()
+    parent_parser=argparse.ArgumentParser(parents=[parser,main_ga_torch.parser_load_distance()])
+    args = parent_parser.parse_args()
+    DSITUATION = fit_traj.load_situation(args.dsituation)
+    merged = main_ga_torch.merge_fid_tdeviation_dist(DSITUATION)
+    # DSITUATION = select_sit_fid(DSITUATION,merged.fid,39864916)
+    modelDistance = main_ga_torch.load_model_distance(DSITUATION,args)
     metric ='square'
     tau = 0.5
     clip_dist=10
@@ -71,25 +78,25 @@ def main():
     print(bestline)
     if True:
         duparams = main_ga_torch.prepare_dparams([{name: bestline[name] for name in main_ga_torch.params_names}])
-        duparams_without =  get_original_uparams(main_ga_torch.DEVICE)
+        duparams_without =  get_original_uparams(args.device)
         duparams = {k:torch.cat([duparams[k],duparams_without[k]],dim=0) for k in duparams}
-        duparams = {k:v.to(main_ga_torch.DEVICE) for k,v in duparams.items()}
+        duparams = {k:v.to(args.device) for k,v in duparams.items()}
         print(duparams)
-        d,lid,ltzero = main_ga_torch.modelDistance(duparams)
+        d,lid,ltzero = modelDistance(duparams)
         # mask = (d[-1]<10).rename(None)
         # indices = torch.arange(0,mask.shape[0],device=mask.device)[mask].cpu()
         # print(indices)
         d = d.cpu()
-        print(main_ga_torch.DIST_MIN_ACTUAL,d[1])
-        print(main_ga_torch.DIST_MIN_ACTUAL-d[1].numpy())
+        print(merged.dist_min_actual,d[1])
+        print(merged.dist_min_actual-d[1].numpy())
         diff = d[1].numpy()- main_ga_torch.DIST_MIN_ACTUAL
         def printi(i):
-            print(main_ga_torch.FID[i],main_ga_torch.TDEVIATION[i])
+            print(merged.fid[i],merged.tdeviation[i])
         printi(diff.argmax())
         printi(diff.argmin())
         printi(d[1].numpy().argmin())
-        printi(main_ga_torch.DIST_MIN_ACTUAL.argmin())
-        plt.scatter(main_ga_torch.DIST_MIN_ACTUAL,d[1].numpy())
+        printi(merged.dist_min_actual.argmin())
+        plt.scatter(merged.dist_min_actual,d[1].numpy())
         # plt.show()
         plt.savefig("distxdist.pdf", dpi=300, bbox_inches='tight')
         plt.clf()
@@ -162,9 +169,9 @@ def main():
                 sols.append(soltotest)
             duparams = main_ga_torch.prepare_dparams(sols)
             duparams = {k:duparams[k] for k in duparams}
-            duparams = {k:v.to(main_ga_torch.DEVICE) for k,v in duparams.items()}
+            duparams = {k:v.to(args.device) for k,v in duparams.items()}
             #print(duparams)
-            d,lid,ltzero = main_ga_torch.modelDistance(duparams)
+            d,lid,ltzero = modelDistance(duparams)
             scores = main_ga_torch.compute_scores(metric,tau,clip_dist,argsnd,d).cpu().numpy()
             sign = -1 if k=="dangleI" else 1
             plt.plot(sign*totest,scores)

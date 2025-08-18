@@ -95,7 +95,7 @@ def draw_deviated(sit,json,device,uparam,uncertainty_value,all_beacons=True,rota
     # print(add.sit_uncertainty["others"].sitf.tzero.item())
     # print(add.sit_uncertainty["others"].sitf.t[:,i])
     # print(add.sit_uncertainty["others"].sitf.fid[:,i])
-    # # raise Exception
+    # raise Exception
     # print(add.sit_uncertainty["deviated"].sitf.tzero.item()+named.nanamax(add.masked_t["others"][i]*(add.t),dim=(T,)).to(torch.int64))
     # print(dxy_u["deviated"]/UNITDIST)
     # print(apply_mask(dxy_u["others"],add.masked_t["others"]).align_to(OTHERS,...)[i]/UNITDIST)
