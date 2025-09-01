@@ -41,12 +41,16 @@ class Point(mixins.PointMixin):
         return f"({self.longitude}, {self.latitude})"
 
 
-def pairwise_to_df(pairwisejson):
+def pairwise_to_df(pairwisejson,predicted):
     l = []
     for k,v in pairwisejson.items():
         v["flight_id"]=k
         l.append(v)
-    return pd.json_normalize(l)
+    res = pd.json_normalize(l)
+    res = res.astype({"flight_id":np.int64})
+    if predicted:
+        res = res.astype({"fixed_threshold":str,"flexible_threshold":str})
+    return res
 
 class Deviated_aircraft:
     def __init__(self,json_deviated_aircraft,json):
@@ -54,8 +58,8 @@ class Deviated_aircraft:
         self.stop = json_deviated_aircraft[STOP_DEVIATION]
         self.flight_id = np.int64(json_deviated_aircraft[FLIGHT_ID])
         self.beacons = [Point(line["name"],line.latitude,line.longitude) for _,line in pd.json_normalize(json_deviated_aircraft[FLIGHT_PLAN]).iterrows()]
-        self.predicted_pairwise = pairwise_to_df(json["predicted_pairwise"])
-        self.actual_pairwise = pairwise_to_df(json["actual_pairwise"])
+        self.predicted_pairwise = pairwise_to_df(json["predicted_pairwise"],predicted=True)
+        self.actual_pairwise = pairwise_to_df(json["actual_pairwise"],predicted=False)
     def __str__(self):
         return f"deviation (start,stop): ({self.start},{self.stop})"
 

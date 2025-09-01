@@ -31,6 +31,7 @@ class GenerateDistance(nn.Module):
     def __init__(self,ladd,device,thresh_z):
         super().__init__()
         self.device = device
+        #assert(isinstance(ladd,nn.ModuleList))
         self.ladd = ladd
         self.thresh_z =thresh_z
     @classmethod
@@ -46,16 +47,13 @@ class GenerateDistance(nn.Module):
                 ladd.append(Add_uncertainty.from_sit_step(s,step=step,capmem=None))
         # raise Exception
         print("formatting traj data done")
-        ladd = ladd
-        return cls(ladd,device=None,thresh_z=thresh_z)
+        return cls((ladd),device=None,thresh_z=thresh_z)
     def forward(self,dargs):
         for x in dargs.values():
             assert(x.dim()<=2)
             assert(x.dim()==1 or x.shape[-1]<=2)
             for y in x.names:
                 assert(y is None)
-        for k,v in dargs.items():
-            print(k,v.device)
         dargs = {k:v.rename(PARAMS,VALUESTOTEST) for k,v in dargs.items()}
         print(f"{len(self.ladd)=}")
         with torch.no_grad():
@@ -83,7 +81,7 @@ class GenerateDistance(nn.Module):
     def to(self,device):
         self.device=device
         self.ladd = torchtraj.utils.to(self.ladd,device=device)
-        # print(self.ladd)
+        print(self.ladd)
         return self
     def clone(self):
         clone = GenerateDistance(ladd=torchtraj.utils.clone(self.ladd),device=self.device,thresh_z=self.thresh_z)

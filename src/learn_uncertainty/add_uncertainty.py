@@ -112,19 +112,19 @@ def getiwpts(sitf,dtimes):
         setattr(sitf,k,f)
     return res
 
-def generate_sitothers_test_vz_(sitothers):
-    torch.manual_seed(44)
-    vz = torch.randn_like(sitothers.fz.v)*3
-    m = torch.abs(vz) < 200/60
-    vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/10#000000
-    # m = ~m
-    # vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/200
-    # print(vz)
-    vt = torch.ones_like(sitothers.fz.v)
-    vxy = named.stack([vt,vz],XY).align_to(...,XY)
-    v = torch.hypot(vxy[...,0],vxy[...,1])
-    theta = torch.atan2(vxy[...,1],vxy[...,0])
-    return v,theta
+# def generate_sitothers_test_vz_(sitothers):
+#     torch.manual_seed(44)
+#     vz = torch.randn_like(sitothers.fz.v)*3
+#     m = torch.abs(vz) < 200/60
+#     vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/10#000000
+#     # m = ~m
+#     # vz.rename(None)[m.rename(None)]=vz.rename(None)[m.rename(None)]/200
+#     # print(vz)
+#     vt = torch.ones_like(sitothers.fz.v)
+#     vxy = named.stack([vt,vz],XY).align_to(...,XY)
+#     v = torch.hypot(vxy[...,0],vxy[...,1])
+#     theta = torch.atan2(vxy[...,1],vxy[...,0])
+#     return v,theta
 
 def minmax(a,dimsInSet):
     if len(dimsInSet) == 0.:
@@ -197,12 +197,14 @@ class Uncertainty_model:
             lambda f: uncertainty.change_longitudinal_speed(uxy[cls.LDSPEED],dixy[cls.LDSPEED]["tdeviation"],dixy[cls.LDSPEED]["trejoin"],f)
         ]
         fothers.fxy = apply_uncertainty(fothers.fxy,ljob_xy)
+        # print("to")
         uz = uparams["fz"]
         zargs = dargs["fz"]
         ljob_z = [
             lambda f:uncertainty.change_vertical_speed_fwd(uz[cls.VSPEED],zargs[cls.VSPEED]["tmin"],zargs[cls.VSPEED]["tmax"],f,)
         ]
         fothers.fz = apply_uncertainty(fothers.fz,ljob_z)
+        # fothers.fz = uncertainty.change_vertical_speed_fwd(uz[cls.VSPEED],zargs[cls.VSPEED]["tmin"].clone().detach(),zargs[cls.VSPEED]["tmax"].clone().detach(),fothers.fz)
         return fothers
     @classmethod
     def apply_uncertainty_deviated(cls,fdeviated,diwpts,dargs,uparams):
@@ -271,6 +273,7 @@ class Uncertainty_model:
             "deviated":cls.apply_uncertainty_deviated,
             "others":cls.apply_uncertainty_others
         }
+        # del sit["deviated"]
         return {k:WithUncertainty.from_sitf_dtimes_dargs(s,dtimes[k],dargs[k],duncertainty[k]) for k,s in sit.items()}
     @classmethod
     def build_uparams(cls,dangle,dt0,dt1,dspeed,ldspeed,vspeed):
@@ -342,6 +345,8 @@ class Add_uncertainty(nn.Module):
         f_u = {k:s.add_uncertainty(uparams[k]) for k,s in self.sit_uncertainty.items()}
         xy_u = {k:apply_mask(s.generate_xy(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
         z_u = {k:apply_mask(s.generate_z(self.t),mask=self.masked_t[k])for k,s in f_u.items()}
+        # xy_u = {k:s.generate_xy(self.t) for k,s in f_u.items()}
+        # z_u = {k:s.generate_z(self.t) for k,s in f_u.items()}
         assert(z_u["deviated"].names[-1]==T)
         z_u0 = torch.round(z_u["deviated"][...,0]/1000)*1000
         mask_constantFL = torch.abs(z_u["deviated"]-z_u0.align_as(z_u["deviated"]))<NO_MORE_CRUISE_FOR_DEVIATED_FT
@@ -359,8 +364,11 @@ class Add_uncertainty(nn.Module):
     # @split_on_t
     def compute_min_distance_xy_on_conflicting_z(self,duparams,thresh_z):
         dist_xy,dist_z,xy_u,z_u = self.compute_all(duparams)
-        conflict_z = dist_z < thresh_z
+        conflict_z = (dist_z < thresh_z)#.detach()
+        assert(torch.any(conflict_z))
+        # dist_xy = dist_xy.masked_fill(mask=torch.logical_not(conflict_z),value=dist_xy.max())
         return named.nanamin(apply_mask(dist_xy,conflict_z/conflict_z),dim=(OTHERS,T))
+        # return named.nanamin(dist_xy,dim=(OTHERS,T))
     def to(self,device):
         # print("Add_uncertainty.to",device)
         # assert (device is None)
@@ -382,6 +390,8 @@ class Add_uncertainty(nn.Module):
         }
     def clone(self):
         return type(self)(**torchtraj.utils.clone(self.dictparams()))
+    # def detach(self):
+    #     return type(self)(**torchtraj.utils.detach(self.dictparams()))
 
 def main():
     import argparse

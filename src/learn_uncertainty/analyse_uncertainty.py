@@ -79,8 +79,8 @@ def main():
     if True:
         duparams = main_ga_torch.prepare_dparams([{name: bestline[name] for name in main_ga_torch.params_names}])
         duparams_without =  get_original_uparams(args.device)
-        duparams = {k:torch.cat([duparams[k],duparams_without[k]],dim=0) for k in duparams}
         duparams = {k:v.to(args.device) for k,v in duparams.items()}
+        duparams = {k:torch.cat([duparams[k],duparams_without[k]],dim=0) for k in duparams}
         print(duparams)
         d,lid,ltzero = modelDistance(duparams)
         # mask = (d[-1]<10).rename(None)
@@ -89,7 +89,7 @@ def main():
         d = d.cpu()
         print(merged.dist_min_actual,d[1])
         print(merged.dist_min_actual-d[1].numpy())
-        diff = d[1].numpy()- main_ga_torch.DIST_MIN_ACTUAL
+        diff = d[1].numpy()- merged.dist_min_actual
         def printi(i):
             print(merged.fid[i],merged.tdeviation[i])
         printi(diff.argmax())
